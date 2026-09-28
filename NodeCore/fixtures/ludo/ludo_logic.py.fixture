@@ -1,0 +1,350 @@
+import json
+import random
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple, Dict, Any
+
+# Constants
+BOARD_SIZE = 15  # 15x15 grid, not directly used but kept for reference
+OUTER_TRACK_LENGTH = 52
+HOME_STRETCH_LENGTH = 6
+PLAYER_COLORS = ["red", "green", "yellow", "blue"]
+START_SQUARES = [0, 13, 26, 39]  # indices on outer track
+STAR_SQUARES = [6, 12, 18, 24, 30, 36, 42, 48]
+SAFE_SQUARES = set(START_SQUARES + STAR_SQUARES)
+
+# Token states
+HOME_BASE = "home_base"
+ACTIVE_TRACK = "active_track"
+HOME_STRETCH = "home_stretch"
+FINISHED = "finished"
+
+@dataclass
+class Token:
+    player_index: int
+    token_index: int
+    state: str = HOME_BASE
+    track_pos: Optional[int] = None  # 0-51 for outer track
+    home_pos: Optional[int] = None   # 0-5 for home stretch
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "player_index": self.player_index,
+            "token_index": self.token_index,
+            "state": self.state,
+            "track_pos": self.track_pos,
+            "home_pos": self.home_pos,
+        }
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "Token":
+        return Token(
+            player_index=data["player_index"],
+            token_index=data["token_index"],
+            state=data["state"],
+            track_pos=data.get("track_pos"),
+            home_pos=data.get("home_pos"),
+        )
+
+@dataclass
+class Player:
+    index: int
+    color: str
+    tokens: List[Token] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.tokens = [Token(self.index, i) for i in range(4)]
+
+    def finished_tokens(self) -> int:
+        return sum(1 for t in self.tokens if t.state == FINISHED)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "index": self.index,
+            "color": self.color,
+            "tokens": [t.to_dict() for t in self.tokens],
+        }
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "Player":
+        player = Player(data["index"], data["color"])
+        player.tokens = [Token.from_dict(td) for td in data["tokens"]]
+        return player
+
+class LudoGame:
+    def __init__(self, num_players: int = 4):
+        if not 2 <= num_players <= 4:
+            raise ValueError("Number of players must be between 2 and 4.")
+        self.players: List[Player] = [Player(i, PLAYER_COLORS[i]) for i in range(num_players)]
+        self.current_player_index: int = 0
+        self.last_roll: Optional[int] = None
+        self.ranking: List[int] = []  # list of player indices in order of finish
+        self.game_over: bool = False
+
+    # ---------- Dice ----------
+    def roll_dice(self) -> int:
+        if self.game_over:
+            raise RuntimeError("Game is over.")
+        roll = random.randint(1, 6)
+        self.last_roll = roll
+        return roll
+
+    # ---------- Move logic ----------
+    def get_token(self, player_index: int, token_index: int) -> Token:
+        """
+        Retrieve a token by player index and token index.
+
+        Parameters
+        ----------
+        player_index : int
+            Index of the player (0‑based).
+        token_index : int
+            Index of the token within that player's token list (0‑based).
+
+        Returns
+        -------
+        Token
+            Reference to the requested token.
+
+        Raises
+        ------
+        IndexError
+            If the player index or token index is out of range.
+        """
+        if not (0 <= player_index < len(self.players)):
+            raise IndexError(f"Player index {player_index} out of range")
+        player = self.players[player_index]
+        if not (0 <= token_index < len(player.tokens)):
+            raise IndexError(f"Token index {token_index} out of range for player {player_index}")
+        return player.tokens[token_index]
+
+    def is_safe_square(self, track_pos: int) -> bool:
+        return track_pos in SAFE_SQUARES
+
+    def token_at_track(self, track_pos: int) -> Optional[Token]:
+        for player in self.players:
+            for token in player.tokens:
+                if token.state == ACTIVE_TRACK and token.track_pos == track_pos:
+                    return token
+        return None
+
+    def token_at_home_stretch(self, player_index: int, home_pos: int) -> Optional[Token]:
+        player = self.players[player_index]
+        for token in player.tokens:
+            if token.state == HOME_STRETCH and token.home_pos == home_pos:
+                return token
+        return None
+
+    def move_token(self, player_index: int, token_index: int, roll: int) -> bool:
+        """
+        Attempts to move the specified token by the given roll.
+        Returns True if move was successful, False otherwise.
+        """
+        if self.game_over:
+            return False
+        if player_index != self.current_player_index:
+            return False
+        token = self.get_token(player_index, token_index)
+        if token.state == FINISHED:
+            return False
+
+        # Determine destination
+        if token.state == HOME_BASE:
+            if roll != 6:
+                return False
+            dest_track = START_SQUARES[player_index]
+            # Check if destination occupied by own token
+            if self.token_at_track(dest_track) and self.token_at_track(dest_track).player_index == player_index:
+                return False
+            # Move token onto track
+            token.state = ACTIVE_TRACK
+            token.track_pos = dest_track
+            # Check for capture
+            self._handle_capture(token)
+            self._advance_turn(roll)
+            return True
+
+        if token.state == ACTIVE_TRACK:
+            new_track = (token.track_pos + roll) % OUTER_TRACK_LENGTH
+            steps_over = token.track_pos + roll - OUTER_TRACK_LENGTH
+            if steps_over > 0:
+                # Enter home stretch
+                if steps_over > HOME_STRETCH_LENGTH:
+                    return False  # cannot overshoot finish
+                if steps_over == HOME_STRETCH_LENGTH:
+                    # Finish
+                    token.state = FINISHED
+                    token.track_pos = None
+                    token.home_pos = None
+                    self._record_finish(player_index)
+                    self._advance_turn(roll)
+                    return True
+                # Move into home stretch
+                token.state = HOME_STRETCH
+                token.track_pos = None
+                token.home_pos = steps_over - 1
+                self._advance_turn(roll)
+                return True
+            else:
+                # Regular track move
+                # Check if destination occupied by own token
+                dest_token = self.token_at_track(new_track)
+                if dest_token and dest_token.player_index == player_index:
+                    return False
+                token.track_pos = new_track
+                # Handle capture
+                self._handle_capture(token)
+                self._advance_turn(roll)
+                return True
+
+        if token.state == HOME_STRETCH:
+            new_home = token.home_pos + roll
+            if new_home >= HOME_STRETCH_LENGTH:
+                return False  # cannot overshoot finish
+            if new_home == HOME_STRETCH_LENGTH - 1:
+                # Finish
+                token.state = FINISHED
+                token.track_pos = None
+                token.home_pos = None
+                self._record_finish(player_index)
+                self._advance_turn(roll)
+                return True
+            token.home_pos = new_home
+            self._advance_turn(roll)
+            return True
+
+        return False
+
+    def _handle_capture(self, moving_token: Token):
+        """
+        If moving_token lands on an opponent's token on a non-safe square,
+        capture that token and grant a bonus roll.
+        """
+        if moving_token.state != ACTIVE_TRACK:
+            return
+        dest = moving_token.track_pos
+        if self.is_safe_square(dest):
+            return
+        occupant = self.token_at_track(dest)
+        if occupant and occupant.player_index != moving_token.player_index:
+            # Capture
+            occupant.state = HOME_BASE
+            occupant.track_pos = None
+            occupant.home_pos = None
+            # Grant bonus roll
+            self.last_roll = None  # reset to allow new roll
+            # Note: bonus roll handled in _advance_turn by checking last_roll
+
+    def _record_finish(self, player_index: int):
+        if player_index not in self.ranking:
+            self.ranking.append(player_index)
+        if len(self.ranking) == len(self.players):
+            self.game_over = True
+
+    def _advance_turn(self, roll: int):
+        """
+        Advance to next player unless bonus roll applies.
+        Bonus roll occurs if last roll was 6 or a capture happened.
+        """
+        # Determine if bonus roll: last_roll is None if capture occurred
+        if roll == 6 or self.last_roll is None:
+            # Bonus roll: same player continues
+            self.last_roll = None  # reset for next roll
+        else:
+            # Advance to next player
+            self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            self.last_roll = None
+
+    # ---------- Valid moves ----------
+    def get_valid_moves(self, player_index: int) -> List[Tuple[int, int]]:
+        """
+        Returns a list of tuples (token_index, roll) that represent
+        all legal moves for the player given the current dice roll.
+        """
+        if self.game_over or player_index != self.current_player_index:
+            return []
+        if self.last_roll is None:
+            return []
+        roll = self.last_roll
+        moves = []
+        for token in self.players[player_index].tokens:
+            if self._can_move(token, roll):
+                moves.append((token.token_index, roll))
+        return moves
+
+    def _can_move(self, token: Token, roll: int) -> bool:
+        if token.state == FINISHED:
+            return False
+        if token.state == HOME_BASE:
+            return roll == 6
+        if token.state == ACTIVE_TRACK:
+            new_track = (token.track_pos + roll) % OUTER_TRACK_LENGTH
+            steps_over = token.track_pos + roll - OUTER_TRACK_LENGTH
+            if steps_over > 0:
+                if steps_over > HOME_STRETCH_LENGTH:
+                    return False
+                if steps_over == HOME_STRETCH_LENGTH:
+                    return True
+                return True
+            # Regular track move
+            dest_token = self.token_at_track(new_track)
+            if dest_token and dest_token.player_index == token.player_index:
+                return False
+            return True
+        if token.state == HOME_STRETCH:
+            new_home = token.home_pos + roll
+            if new_home >= HOME_STRETCH_LENGTH:
+                return False
+            return True
+        return False
+
+    # ---------- Serialization ----------
+    def save_game(self, filepath: str):
+        data = {
+            "num_players": len(self.players),
+            "players": [p.to_dict() for p in self.players],
+            "current_player_index": self.current_player_index,
+            "last_roll": self.last_roll,
+            "ranking": self.ranking,
+            "game_over": self.game_over,
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    @staticmethod
+    def load_game(filepath: str) -> "LudoGame":
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        game = LudoGame(num_players=data["num_players"])
+        game.players = [Player.from_dict(pd) for pd in data["players"]]
+        game.current_player_index = data["current_player_index"]
+        game.last_roll = data["last_roll"]
+        game.ranking = data["ranking"]
+        game.game_over = data["game_over"]
+        return game
+
+    # ---------- Utility ----------
+    def get_board_state(self) -> Dict[str, Any]:
+        """
+        Returns a serializable representation of the board for GUI rendering.
+        """
+        board = {
+            "players": [
+                {
+                    "color": p.color,
+                    "tokens": [
+                        {
+                            "state": t.state,
+                            "track_pos": t.track_pos,
+                            "home_pos": t.home_pos,
+                        }
+                        for t in p.tokens
+                    ],
+                }
+                for p in self.players
+            ],
+            "current_player_index": self.current_player_index,
+            "last_roll": self.last_roll,
+            "ranking": self.ranking,
+            "game_over": self.game_over,
+        }
+        return board

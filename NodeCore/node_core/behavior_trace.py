@@ -170,17 +170,57 @@ def trace(test, workspace, test_file):
     return [c for c in calls if c]
 
 
+def coverage(test, workspace, test_file):
+    """Qualified names of project functions a test executes (any call depth)."""
+    seen = set()
+
+    def profiler(frame, event, arg):
+        if event == "call":
+            code = frame.f_code
+            if code.co_filename.startswith(workspace) and code.co_filename != test_file \
+                    and not code.co_name.startswith("<"):
+                seen.add(getattr(code, "co_qualname", code.co_name))
+
+    sys.setprofile(profiler)
+    try:
+        test.run(unittest.TestResult())
+    finally:
+        sys.setprofile(None)
+    return seen
+
+
+def suspiciousness(runs):
+    """Ochiai spectrum-based fault localisation over [(failed, functions)].
+
+    score(f) = failing tests running f / sqrt(all failing tests * all tests running f).
+    Helpers used by passing tests too rank low; code mostly run by failing tests ranks high.
+    """
+    import math
+    total_failed = sum(1 for failed, _ in runs if failed)
+    if not total_failed:
+        return []
+    names = set().union(*(funcs for _, funcs in runs)) if runs else set()
+    scores = []
+    for name in names:
+        ef = sum(1 for failed, funcs in runs if failed and name in funcs)
+        ep = sum(1 for failed, funcs in runs if not failed and name in funcs)
+        if ef:
+            scores.append((ef / math.sqrt(total_failed * (ef + ep)), name))
+    return sorted(scores, key=lambda item: (-item[0], item[1]))
+
+
 def main():
     workspace, module = os.path.realpath(sys.argv[1]), sys.argv[2]
     os.chdir(workspace)
     sys.path.insert(0, workspace)
     suite = unittest.defaultTestLoader.loadTestsFromName(module)
     test_file = os.path.realpath(sys.modules[module].__file__)
-    lines = []
+    lines, runs = [], []
     for test in tests_of(suite):
         result = unittest.TestResult()
         test.run(result)
         failed = result.failures + result.errors
+        runs.append((bool(failed), coverage(test, workspace, test_file)))
         if not failed:
             continue
         message = failed[0][1].strip().splitlines()[-1]
@@ -189,6 +229,11 @@ def main():
         lines.extend("    " + call for call in calls[-MAX_CALLS:])
         if not calls:
             lines.append("    (no calls into project code were recorded)")
+    ranked = [(score, name) for score, name in suspiciousness(runs)
+              if not (name.rsplit(".", 1)[-1].startswith("__") and name.endswith("__"))]  # skip setup dunders
+    if ranked:
+        lines.insert(0, "SUSPICIOUS (most likely buggy first, by how much more failing tests run them than "
+                        "passing ones): " + ", ".join(f"{name}={score:.2f}" for score, name in ranked[:6]))
     sys.stdout = sys.__stdout__
     print("\n".join(lines))
 

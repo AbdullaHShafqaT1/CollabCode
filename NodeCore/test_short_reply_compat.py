@@ -479,3 +479,106 @@ def test_test_fix_that_removes_tests_is_rejected(tmp_path):
     reply = w.process(fence("test_chess.py", "class TestChessLogic(unittest.TestCase):\n"
                                              "    @unittest.skip('x')\n    def test_initial_layout(self):\n        pass\n"))
     assert "Test fix rejected" in reply and (tmp_path / "test_chess.py").read_text() == before
+
+
+CHESS_TASK = ("Class `ChessGame`: `self.current_turn`: 'W' (White moves first). Pieces 'wP','wK','bP','bK'. "
+              "`make_move(from_pos, to_pos)` switches turn ('W' <-> 'B'). `is_in_check(color)` -> bool: checks if "
+              "color's King is under attack.")
+RUN14 = Path(__file__).with_name("fixtures") / "run14"
+
+
+def run14_sources():
+    return {p.name[:-len(".fixture")]: p.read_text() for p in RUN14.glob("*.fixture")}
+
+
+def test_convention_check_flags_invented_spellings_only():
+    from node_core import conventions
+    issues = conventions.check(CHESS_TASK, run14_sources())
+    joined = "\n".join(issues)
+    assert "test_chess.py:58: call to is_in_check() uses 'w'" in joined
+    assert "chess_logic.py:124: is_in_check() comparing parameter `color` uses 'w'" in joined
+    assert "piece[0]" not in joined  # internal piece-prefix checks are legitimate
+    # Run 13's code follows the task's spelling: nothing to report.
+    run13 = {p.name[:-len(".fixture")]: p.read_text() for p in RUN13.glob("*.fixture")}
+    assert conventions.check(CHESS_TASK, run13) == []
+
+
+def test_convention_issues_drive_repair_and_are_capped(tmp_path):
+    for name, text in run14_sources().items():
+        (tmp_path / name).write_text(text)
+    w = TaskWorkflow(tmp_path, CHESS_TASK, detect_project_profile(TASK), max_rounds=20)
+    w.phase = 4
+    prompt = w.process("No code this time.")
+    assert "Naming convention:" in prompt and "task's spelling" in prompt
+    assert "FRESH REWRITE" not in prompt and "TEST AUDIT" not in prompt
+    for _ in range(3):
+        w.process("No code this time.")
+    assert not any(e.startswith("Naming convention") for e in w.verify())  # capped after 3 rounds
+
+
+def test_stop_interrupts_a_long_model_request():
+    import time
+
+    class WF:
+        status, reason = "IN_PROGRESS", ""
+
+        def stop(self, status, reason):
+            self.status, self.reason = status, reason
+
+    class Agent:
+        llm_config = {"config_list": [{"model": "m", "base_url": "http://x/v1", "api_key": "k"}]}
+        workflow_ref = WF()
+
+        def generate_oai_reply(self, *a):
+            time.sleep(5)  # a slow model reply
+            return True, "late"
+
+    started = time.time()
+    stop_at = started + 0.3
+    reply = make_resilient_reply(lambda: "http://x", should_stop=lambda: time.time() > stop_at)
+    agent = Agent()
+    assert reply(agent, [], None, None) == (True, None)
+    assert time.time() - started < 2 and agent.workflow_ref.status == "CANCELLED"
+
+
+def test_reply_cut_off_mid_stream_counts_as_outage():
+    import json
+    from node_core.agents import is_endpoint_outage
+    try:
+        json.loads("      ")  # only the bridge's heartbeat spaces arrived
+    except json.JSONDecodeError as exc:
+        assert is_endpoint_outage(exc)
+    assert not is_endpoint_outage(ValueError("unrelated"))
+
+
+def test_ochiai_ranks_code_run_mostly_by_failing_tests_first():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bt", Path(__file__).with_name("node_core") / "behavior_trace.py")
+    bt = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bt)
+    runs = [(True, {"G.helper", "G.buggy"}), (True, {"G.helper", "G.buggy"}),
+            (False, {"G.helper"}), (False, {"G.helper", "G.other"})]
+    ranked = [name for _, name in bt.suspiciousness(runs)]
+    assert ranked[0] == "G.buggy" and ranked.index("G.helper") > 0 and "G.other" not in ranked
+
+
+LUDO = Path(__file__).with_name("fixtures") / "ludo"
+LUDO_TASK = ("Build a Ludo game with `ludo_logic.py`, `ludo_gui.py`, `main.py` and `test_ludo.py`. "
+             "Capturing sends an opponent's token back to home base.")
+
+
+def test_fault_localisation_targets_the_buggy_function(tmp_path):
+    import shutil
+    for name in ("ludo_logic.py", "test_ludo.py"):
+        shutil.copy(LUDO / (name + ".fixture"), tmp_path / name)
+    (tmp_path / "ludo_gui.py").write_text("class LudoGUI:\n    pass\n")
+    (tmp_path / "main.py").write_text("import ludo_logic, ludo_gui\n")
+    w = TaskWorkflow(tmp_path, LUDO_TASK, detect_project_profile(LUDO_TASK), max_rounds=20)
+    w.phase = 4
+    for _ in range(2):
+        w.process("No code this time.")
+    assert w.resample["target"] == "LudoGame._handle_capture"  # not get_token, which the Ludo GUI run wasted 4 rewrites on
+    w10 = run10_workspace(tmp_path / "r10" if (tmp_path / "r10").mkdir() is None else tmp_path)
+    for _ in range(2):
+        w10.process("No code this time.")
+    assert w10.resample["target"] == "ChessGame.make_move"

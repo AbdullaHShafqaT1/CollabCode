@@ -240,6 +240,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
+def open_in_file_manager(path: str) -> None:
+    """Open a folder in the platform's file manager (os.startfile is Windows-only)."""
+    if sys.platform == "win32":
+        os.startfile(path)
+    else:
+        import subprocess
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+
+
 def get_config_path() -> Path:
     return _ROOT / CONFIG_FILENAME
 
@@ -1238,7 +1247,7 @@ class NodeCoreLauncherApp:
         """Opens the active workspace directory in the OS file explorer."""
         ws = self.ws_var.get().strip()
         if os.path.exists(ws):
-            os.startfile(ws)
+            open_in_file_manager(ws)
         else:
             self.messagebox.showwarning("Directory Not Found", f"Workspace does not exist yet:\n{ws}")
 

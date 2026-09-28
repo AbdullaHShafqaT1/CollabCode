@@ -19,6 +19,7 @@ from pathlib import Path
 
 from node_core.tools import NodeForge, NodeInsight, NodeLog, NodePulse
 from node_core import incremental as inc
+from node_core import conventions
 
 STATE_FILE = "state.json"  # resumable workflow state inside .cloudcode/
 PY_COMMANDS = {"read", "bash", "sh", "shell", "cmd", "powershell"}
@@ -97,6 +98,7 @@ class TaskWorkflow:
         # Test audit: are the failing tests themselves wrong? {"stage": "ask"|"fix", "tests": [...]}
         self.test_audit = None
         self.audited = set()  # test names already judged, so an audit is never repeated
+        self.convention_counts = {}  # issue -> rounds reported; capped so a false alarm cannot stall
         # Snapshot caller-owned criteria before the model can change the workspace.
         if acceptance is None:
             path = self.workspace / ".cloudcode" / "acceptance.json"
@@ -141,7 +143,7 @@ class TaskWorkflow:
                  "incremental": self.incremental, "incremental_disabled": sorted(self.incremental_disabled),
                  "best": self.best, "resample": self.resample, "reverts": self.reverts,
                  "resample_tried": self.resample_tried, "test_audit": self.test_audit,
-                 "audited": sorted(self.audited),
+                 "audited": sorted(self.audited), "convention_counts": self.convention_counts,
                  "files_created": sorted(self.files_created), "files_modified": sorted(self.files_modified)}
         try:
             path = self._state_path()
@@ -173,6 +175,7 @@ class TaskWorkflow:
         self.resample_tried = list(state.get("resample_tried", []))
         self.test_audit = state.get("test_audit")
         self.audited = set(state.get("audited", []))
+        self.convention_counts = dict(state.get("convention_counts", {}))
         self.files_created = set(state.get("files_created", []))
         self.files_modified = set(state.get("files_modified", []))
         self.resumed = True
@@ -476,6 +479,21 @@ class TaskWorkflow:
             if test_file and not self.path(test_file).is_file():
                 errors.append(f"{test_file}: file is missing; test suite cannot run")
 
+        # Values spelled differently from the task (e.g. 'w' where the task says 'W')
+        # slip past the model's own tests, which share the same invented spelling.
+        if self.phase >= 4 and existing_py:
+            sources = {}
+            for name in existing_py:
+                try:
+                    sources[name] = self.path(name).read_text(encoding="utf-8")
+                except OSError:
+                    pass
+            for issue in conventions.check(self.task, sources):
+                count = self.convention_counts.get(issue, 0) + 1
+                self.convention_counts[issue] = count
+                if count <= 3:
+                    errors.append("Naming convention: " + issue)
+
         # Stubs left by a partially saved draft must be implemented.
         for name in existing_py:
             try:
@@ -598,6 +616,9 @@ class TaskWorkflow:
             if focus:
                 break
         logic_bug = False
+        convention = [e for e in errors if e.startswith("Naming convention: ")]
+        if focus is None and convention and not blockers:
+            focus = convention[0][len("Naming convention: "):].split(":", 1)[0]
         if focus is None:
             keys = {1: ['logic'], 2: ['logic'], 3: ['gui'], 4: ['main', 'tests'], 5: ['guide']}[self.phase]
             needed = [self.profile[k] for k in keys] + list(self.required_files)
@@ -639,6 +660,13 @@ class TaskWorkflow:
                                ('\n[Excerpt only; use a read block for the remaining lines.]' if len(value) > limit else ''))
         if blockers:
             next_action = f'NEXT RESPONSE: inspect/fix the blocking import in {focus}. '
+        elif convention:
+            files = sorted({e[len("Naming convention: "):].split(":", 1)[0] for e in convention})
+            next_action = ("NEXT RESPONSE: the code or tests spell task-defined values differently from the task "
+                           "(see the 'Naming convention' lines). Change every listed place to the task's spelling, "
+                           "keeping behaviour otherwise the same, in: " + ", ".join(files) + ". Output ONLY the "
+                           "corrected function/method definitions, one ```python block per file whose first line is "
+                           "'# filename: <file>'. ")
         elif logic_bug:
             deliver = ("output ONLY the corrected function/method definitions in one python block whose first "
                        f"line is '# filename: {focus}'; the runner splices them into the file")
@@ -1089,6 +1117,14 @@ class TaskWorkflow:
                      for q in inc.definitions(self.path(rel).read_text(encoding="utf-8"))}
         except (OSError, SyntaxError):
             pass
+        # Best evidence first: the spectrum-based ranking of functions that failing
+        # tests run much more than passing ones (see behavior_trace.suspiciousness).
+        ranking = re.search(r"^SUSPICIOUS[^:]*: (.+)$", text, re.M)
+        if ranking:
+            for item in ranking.group(1).split(", "):
+                name = item.split("=", 1)[0].rsplit(".", 1)[-1]
+                if name in known and known[name][1] not in tried and not name.startswith("__"):
+                    return known[name]
         # Direct calls from the failing tests first, then the functions they call.
         # A bug copied into a callee is invisible while its caller returns early.
         calls = re.findall(r"^(\s{4,8})(?:[A-Za-z_]\w*\.)?([A-Za-z_]\w*)\(.*?\) -> ", text, re.M)
@@ -1537,7 +1573,10 @@ class TaskWorkflow:
         """Build the next model prompt from current workflow state."""
         if self.partial:
             return self.continuation_prompt(errors)
-        self._update_resample(errors)
+        if any(e.startswith("Naming convention: ") for e in errors):
+            self.resample = None  # fix the spelling first; it may be the real cause
+        else:
+            self._update_resample(errors)
         if self.test_audit:
             return self.audit_prompt(errors)
         if self.resample:

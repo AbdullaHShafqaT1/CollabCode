@@ -1,0 +1,150 @@
+import json
+import os
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from ludo_logic import (
+    LudoGame,
+    PLAYER_COLORS,
+    HOME_BASE,
+    ACTIVE_TRACK,
+    HOME_STRETCH,
+    FINISHED,
+    START_SQUARES,
+    SAFE_SQUARES,
+)
+
+
+class TestLudoLogic(unittest.TestCase):
+    def setUp(self):
+        # Use a fresh 4-player game for most tests
+        self.game = LudoGame(num_players=4)
+
+    # ---------- Dice ----------
+    def test_roll_dice_range(self):
+        for _ in range(10):
+            roll = self.game.roll_dice()
+            self.assertIn(roll, range(1, 7), f"Roll {roll} out of range")
+
+    # ---------- Token transitions ----------
+    def test_token_out_of_home_on_six(self):
+        player_index = 0
+        token_index = 0
+        # Force a roll of 6
+        with patch("random.randint", return_value=6):
+            roll = self.game.roll_dice()
+            self.assertEqual(roll, 6)
+            moved = self.game.move_token(player_index, token_index, roll)
+            self.assertTrue(moved)
+            token = self.game.get_token(player_index, token_index)
+            self.assertEqual(token.state, ACTIVE_TRACK)
+            self.assertEqual(token.track_pos, START_SQUARES[player_index])
+
+    def test_token_cannot_move_without_six_from_home(self):
+        player_index = 0
+        token_index = 0
+        with patch("random.randint", return_value=3):
+            roll = self.game.roll_dice()
+            self.assertEqual(roll, 3)
+            moved = self.game.move_token(player_index, token_index, roll)
+            self.assertFalse(moved)
+            token = self.game.get_token(player_index, token_index)
+            self.assertEqual(token.state, HOME_BASE)
+
+    def test_exact_roll_to_finish(self):
+        # Place a token 1 step away from finish in home stretch
+        player_index = 0
+        token_index = 0
+        token = self.game.get_token(player_index, token_index)
+        token.state = HOME_STRETCH
+        token.home_pos = 4  # 0-indexed; 5 is last
+        # Roll 1 to finish
+        moved = self.game.move_token(player_index, token_index, 1)
+        self.assertTrue(moved)
+        self.assertEqual(token.state, FINISHED)
+        # Roll 2 should fail (overshoot)
+        token.state = HOME_STRETCH
+        token.home_pos = 4
+        moved = self.game.move_token(player_index, token_index, 2)
+        self.assertFalse(moved)
+
+    # ---------- Capture mechanics ----------
+    def test_capture_grants_bonus_roll(self):
+        # Setup: Player 0 token on track pos 10
+        p0_token = self.game.get_token(0, 0)
+        p0_token.state = ACTIVE_TRACK
+        p0_token.track_pos = 10
+        # Player 1 token on track pos 15
+        p1_token = self.game.get_token(1, 0)
+        p1_token.state = ACTIVE_TRACK
+        p1_token.track_pos = 15
+        # Player 0 rolls 5 to land on 15
+        moved = self.game.move_token(0, 0, 5)
+        self.assertTrue(moved)
+        # p1_token should be back home
+        self.assertEqual(p1_token.state, HOME_BASE)
+        # Bonus roll should be granted: current player remains 0
+        self.assertEqual(self.game.current_player_index, 0)
+
+    def test_safe_square_immunity(self):
+        # Place opponent token on a safe square
+        safe_pos = next(iter(SAFE_SQUARES))
+        p1_token = self.game.get_token(1, 0)
+        p1_token.state = ACTIVE_TRACK
+        p1_token.track_pos = safe_pos
+        # Player 0 token lands on same safe square
+        p0_token = self.game.get_token(0, 0)
+        p0_token.state = ACTIVE_TRACK
+        p0_token.track_pos = (safe_pos - 1) % 52
+        moved = self.game.move_token(0, 0, 1)
+        self.assertTrue(moved)
+        # Opponent token should remain
+        self.assertEqual(p1_token.state, ACTIVE_TRACK)
+        self.assertEqual(p1_token.track_pos, safe_pos)
+
+    # ---------- Win condition ----------
+    def test_win_condition_and_ranking(self):
+        # Finish all tokens for player 0
+        for t in self.game.players[0].tokens:
+            t.state = FINISHED
+        self.game._record_finish(0)
+        self.assertIn(0, self.game.ranking)
+        # Finish all tokens for player 1
+        for t in self.game.players[1].tokens:
+            t.state = FINISHED
+        self.game._record_finish(1)
+        self.assertEqual(self.game.ranking, [0, 1])
+        # Game over flag
+        self.assertTrue(self.game.game_over)
+
+    # ---------- Serialization ----------
+    def test_save_and_load_roundtrip(self):
+        # Make some moves
+        self.game.move_token(0, 0, 6)  # bring out
+        self.game.move_token(0, 1, 6)  # bring out
+        self.game.move_token(0, 0, 3)  # move
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            path = tmp.name
+        try:
+            self.game.save_game(path)
+            # Load into new game
+            new_game = LudoGame(num_players=4)
+            new_game.load_game(path)
+            # Compare states
+            for p_old, p_new in zip(self.game.players, new_game.players):
+                self.assertEqual(p_old.index, p_new.index)
+                self.assertEqual(p_old.color, p_new.color)
+                for t_old, t_new in zip(p_old.tokens, p_new.tokens):
+                    self.assertEqual(t_old.state, t_new.state)
+                    self.assertEqual(t_old.track_pos, t_new.track_pos)
+                    self.assertEqual(t_old.home_pos, t_new.home_pos)
+            self.assertEqual(self.game.current_player_index, new_game.current_player_index)
+            self.assertEqual(self.game.ranking, new_game.ranking)
+        finally:
+            os.remove(path)
+
+
+if __name__ == "__main__":
+    unittest.main()

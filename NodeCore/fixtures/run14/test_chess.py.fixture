@@ -1,0 +1,79 @@
+import unittest
+import json
+import os
+from chess_logic import ChessGame, in_bounds
+
+class TestChessLogic(unittest.TestCase):
+    def setUp(self):
+        self.game = ChessGame()
+
+    def test_initial_board_setup(self):
+        # Count pieces
+        piece_counts = {
+            'wP': 0, 'wR': 0, 'wN': 0, 'wB': 0, 'wQ': 0, 'wK': 0,
+            'bP': 0, 'bR': 0, 'bN': 0, 'bB': 0, 'bQ': 0, 'bK': 0
+        }
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.get_piece(r, c)
+                if piece:
+                    piece_counts[piece] += 1
+        expected_counts = {
+            'wP': 8, 'wR': 2, 'wN': 2, 'wB': 2, 'wQ': 1, 'wK': 1,
+            'bP': 8, 'bR': 2, 'bN': 2, 'bB': 2, 'bQ': 1, 'bK': 1
+        }
+        self.assertEqual(piece_counts, expected_counts)
+
+    def test_pawn_opening_move(self):
+        # White pawn from (6,0) to (4,0)
+        self.assertTrue(self.game.make_move((6, 0), (4, 0)))
+        self.assertIsNone(self.game.get_piece(6, 0))
+        self.assertEqual(self.game.get_piece(4, 0), 'wP')
+        # Turn should now be black
+        self.assertEqual(self.game.current_turn, 'B')
+
+    def test_knight_leap_over_pawn(self):
+        # White knight at (7,1) to (5,0)
+        self.assertTrue(self.game.make_move((7, 1), (5, 0)))
+        self.assertIsNone(self.game.get_piece(7, 1))
+        self.assertEqual(self.game.get_piece(5, 0), 'wN')
+        # Turn should now be black
+        self.assertEqual(self.game.current_turn, 'B')
+
+    def test_turn_alternation(self):
+        initial_turn = self.game.current_turn
+        self.game.make_move((6, 0), (5, 0))  # white pawn one step
+        self.assertNotEqual(self.game.current_turn, initial_turn)
+        self.game.make_move((1, 0), (2, 0))  # black pawn one step
+        self.assertEqual(self.game.current_turn, initial_turn)
+
+    def test_simple_check_detection(self):
+        # Clear board except kings and a white queen delivering check
+        self.game.board = [[None]*8 for _ in range(8)]
+        self.game.board[0][4] = 'bK'
+        self.game.board[7][4] = 'wK'
+        self.game.board[3][4] = 'wQ'
+        self.game.current_turn = 'W'
+        self.assertTrue(self.game.is_in_check('b'))
+        self.assertFalse(self.game.is_in_check('w'))
+
+    def test_save_and_load(self):
+        # Make a move and save
+        self.game.make_move((6, 0), (4, 0))
+        temp_file = 'temp_game.json'
+        self.game.save_game(temp_file)
+        # Load into new game
+        new_game = ChessGame()
+        new_game.load_game(temp_file)
+        # Compare board and turn
+        self.assertEqual(new_game.board, self.game.board)
+        self.assertEqual(new_game.current_turn, self.game.current_turn)
+        os.remove(temp_file)
+
+    def test_illegal_move(self):
+        # Attempt to move white pawn two steps from non-starting row
+        self.game.make_move((6, 0), (4, 0))  # valid
+        self.assertFalse(self.game.make_move((4, 0), (2, 0)))  # illegal
+
+if __name__ == '__main__':
+    unittest.main()

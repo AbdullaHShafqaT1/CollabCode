@@ -563,6 +563,11 @@ def is_endpoint_outage(exc) -> bool:
     # autogen re-raises openai timeouts as the built-in TimeoutError.
     if isinstance(exc, (openai.APIConnectionError, openai.APITimeoutError, TimeoutError)):
         return True
+    # A reply cut off mid-stream (e.g. tunnel dropped after the bridge's
+    # whitespace heartbeat) arrives as unparseable JSON: retry, don't fail the run.
+    import json as _json
+    if isinstance(exc, _json.JSONDecodeError) or (isinstance(exc, ValueError) and "Expecting value" in str(exc)):
+        return True
     return isinstance(exc, openai.APIStatusError) and getattr(exc, "status_code", 0) in {502, 503, 504, 520, 521,
                                                                                           522, 523, 524, 530}
 
@@ -600,11 +605,40 @@ def make_resilient_reply(endpoint_resolver, should_stop=None, wait=None, logger=
             recipient.client = OpenAIWrapper(**{k: v for k, v in cfg.items() if not k.startswith("_")})
             NodeLog.emit("SAMPLING_CHANGED", {"temperature": wanted, "max_tokens": wanted_tokens})
 
+    def interruptible_reply(recipient, messages, sender, config):
+        """Run the (possibly minutes-long) model request in a worker thread so a
+        stop request takes effect within half a second instead of after the reply."""
+        import threading
+        box = {}
+
+        def work():
+            try:
+                box["result"] = recipient.generate_oai_reply(messages, sender, config)
+            except BaseException as exc:  # re-raised in the caller's thread
+                box["error"] = exc
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        while worker.is_alive():
+            worker.join(0.5)
+            if should_stop and should_stop():
+                workflow = getattr(recipient, "workflow_ref", None)
+                if workflow is not None and getattr(workflow, "status", None) == "IN_PROGRESS":
+                    workflow.stop("CANCELLED", "User requested cancellation")
+                NodeLog.emit("TASK_CANCELLED", {"during": "model request"})
+                return None  # the abandoned request finishes (or times out) on its own
+        if "error" in box:
+            raise box["error"]
+        return box["result"]
+
     def resilient_reply(recipient, messages=None, sender=None, config=None):
         apply_temperature_hint(recipient)
         while True:
             try:
-                final, reply = recipient.generate_oai_reply(messages, sender, config)
+                outcome = interruptible_reply(recipient, messages, sender, config)
+                if outcome is None:
+                    return True, None  # stopped by the user: end the conversation now
+                final, reply = outcome
                 reply = tool_calls_to_blocks(reply)
                 if reply is None or (isinstance(reply, str) and not reply.strip()):
                     # An empty answer (e.g. all tokens spent reasoning) would end the chat.

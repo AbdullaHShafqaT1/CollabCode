@@ -1,0 +1,162 @@
+import json
+from typing import List, Optional, Tuple
+
+# Piece constants
+PIECE_TYPES = ['P', 'R', 'N', 'B', 'Q', 'K']
+COLORS = ['w', 'b']
+
+# Directions for sliding pieces
+DIRS_BISHOP = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+DIRS_ROOK = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+DIRS_KING = DIRS_BISHOP + DIRS_ROOK
+DIRS_KNIGHT = [(-2, -1), (-2, 1), (-1, -2), (-1, 2),
+               (1, -2), (1, 2), (2, -1), (2, 1)]
+
+def in_bounds(r: int, c: int) -> bool:
+    return 0 <= r < 8 and 0 <= c < 8
+
+class ChessGame:
+    def __init__(self):
+        self.board: List[List[Optional[str]]] = [[None for _ in range(8)] for _ in range(8)]
+        self.current_turn: str = 'W'  # 'W' or 'B'
+        self._setup_board()
+
+    def _setup_board(self):
+        # Place black pieces
+        self.board[0] = ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR']
+        self.board[1] = ['bP'] * 8
+        # Empty squares
+        for r in range(2, 6):
+            self.board[r] = [None] * 8
+        # Place white pieces
+        self.board[6] = ['wP'] * 8
+        self.board[7] = ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+
+    def get_piece(self, row: int, col: int) -> Optional[str]:
+        if not in_bounds(row, col):
+            return None
+        return self.board[row][col]
+
+    def get_legal_moves(self, row: int, col: int) -> List[Tuple[int, int]]:
+        piece = self.get_piece(row, col)
+        if piece is None:
+            return []
+        color = piece[0]
+        if (color == 'w' and self.current_turn != 'W') or (color == 'b' and self.current_turn != 'B'):
+            return []
+        piece_type = piece[1]
+        moves: List[Tuple[int, int]] = []
+
+        if piece_type == 'P':
+            dir_forward = -1 if color == 'w' else 1
+            start_row = 6 if color == 'w' else 1
+            # One step forward
+            r1, c1 = row + dir_forward, col
+            if in_bounds(r1, c1) and self.get_piece(r1, c1) is None:
+                moves.append((r1, c1))
+                # Two steps from start
+                r2 = r1 + dir_forward
+                if row == start_row and in_bounds(r2, c1) and self.get_piece(r2, c1) is None:
+                    moves.append((r2, c1))
+            # Captures
+            for dc in (-1, 1):
+                rc, cc = row + dir_forward, col + dc
+                if in_bounds(rc, cc):
+                    target = self.get_piece(rc, cc)
+                    if target is not None and target[0] != color:
+                        moves.append((rc, cc))
+
+        elif piece_type == 'N':
+            for dr, dc in DIRS_KNIGHT:
+                r, c = row + dr, col + dc
+                if in_bounds(r, c):
+                    target = self.get_piece(r, c)
+                    if target is None or target[0] != color:
+                        moves.append((r, c))
+
+        elif piece_type in ('B', 'R', 'Q'):
+            dirs = []
+            if piece_type in ('B', 'Q'):
+                dirs += DIRS_BISHOP
+            if piece_type in ('R', 'Q'):
+                dirs += DIRS_ROOK
+            for dr, dc in dirs:
+                r, c = row + dr, col + dc
+                while in_bounds(r, c):
+                    target = self.get_piece(r, c)
+                    if target is None:
+                        moves.append((r, c))
+                    else:
+                        if target[0] != color:
+                            moves.append((r, c))
+                        break
+                    r += dr
+                    c += dc
+
+        elif piece_type == 'K':
+            for dr, dc in DIRS_KING:
+                r, c = row + dr, col + dc
+                if in_bounds(r, c):
+                    target = self.get_piece(r, c)
+                    if target is None or target[0] != color:
+                        moves.append((r, c))
+
+        return moves
+
+    def make_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+        fr, fc = from_pos
+        tr, tc = to_pos
+        piece = self.get_piece(fr, fc)
+        if piece is None:
+            return False
+        legal = self.get_legal_moves(fr, fc)
+        if (tr, tc) not in legal:
+            return False
+        # Execute move
+        self.board[tr][tc] = piece
+        self.board[fr][fc] = None
+        # Switch turn
+        self.current_turn = 'B' if self.current_turn == 'W' else 'W'
+        return True
+
+    def is_in_check(self, color: str) -> bool:
+        # Find king
+        king_piece = 'wK' if color == 'w' else 'bK'
+        king_pos = None
+        for r in range(8):
+            for c in range(8):
+                if self.board[r][c] == king_piece:
+                    king_pos = (r, c)
+                    break
+            if king_pos:
+                break
+        if king_pos is None:
+            return False  # Should not happen
+        opp_color = 'b' if color == 'w' else 'w'
+        opp_turn = 'B' if opp_color == 'b' else 'W'
+        # Temporarily set turn to opponent to use get_legal_moves
+        original_turn = self.current_turn
+        self.current_turn = opp_turn
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece is not None and piece[0] == opp_color:
+                    if king_pos in self.get_legal_moves(r, c):
+                        self.current_turn = original_turn
+                        return True
+        self.current_turn = original_turn
+        return False
+
+    def save_game(self, filepath: str):
+        data = {
+            'board': self.board,
+            'current_turn': self.current_turn
+        }
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+
+    def load_game(self, filepath: str):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        self.board = data['board']
+        self.current_turn = data['current_turn']

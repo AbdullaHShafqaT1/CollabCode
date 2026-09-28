@@ -1,0 +1,173 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from typing import List, Tuple, Optional
+
+from chess_logic import ChessGame, in_bounds, PIECE_TYPES, COLORS, DIRS_BISHOP, DIRS_ROOK, DIRS_KING, DIRS_KNIGHT
+
+# Unicode glyphs for pieces
+UNICODE_PIECES = {
+    'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+    'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
+}
+
+SQUARE_SIZE = 60
+BOARD_SIZE = SQUARE_SIZE * 8
+LIGHT_COLOR = '#EEEED2'
+DARK_COLOR = '#769656'
+HIGHLIGHT_COLOR = '#BACA44'
+SELECT_COLOR = '#F5A623'
+
+class ChessGUI:
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.root.title("Chess")
+        self.game = ChessGame()
+        self.selected: Optional[Tuple[int, int]] = None
+        self.legal_moves: List[Tuple[int, int]] = []
+
+        # Header
+        self.header = ttk.Label(root, text=self._turn_text(), font=('Arial', 14))
+        self.header.pack(pady=5)
+
+        # Canvas
+        self.canvas = tk.Canvas(root, width=BOARD_SIZE, height=BOARD_SIZE)
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self._on_click)
+
+        # Control bar
+        control = ttk.Frame(root)
+        control.pack(pady=5)
+        ttk.Button(control, text="New Game", command=self._new_game).grid(row=0, column=0, padx=5)
+        ttk.Button(control, text="Save Game", command=self._save_game).grid(row=0, column=1, padx=5)
+        ttk.Button(control, text="Load Game", command=self._load_game).grid(row=0, column=2, padx=5)
+
+        # Square rectangles and piece texts
+        self.squares: List[List[int]] = [[0]*8 for _ in range(8)]
+        self.pieces: List[List[int]] = [[0]*8 for _ in range(8)]
+        self._draw_board()
+        self._draw_pieces()
+
+    def _turn_text(self) -> str:
+        return "White to move" if self.game.current_turn == 'W' else "Black to move"
+
+    def _draw_board(self):
+        for r in range(8):
+            for c in range(8):
+                x1 = c * SQUARE_SIZE
+                y1 = r * SQUARE_SIZE
+                x2 = x1 + SQUARE_SIZE
+                y2 = y1 + SQUARE_SIZE
+                color = LIGHT_COLOR if (r + c) % 2 == 0 else DARK_COLOR
+                rect = self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline='')
+                self.squares[r][c] = rect
+
+    def _draw_pieces(self):
+        # Clear existing pieces
+        for r in range(8):
+            for c in range(8):
+                if self.pieces[r][c]:
+                    self.canvas.delete(self.pieces[r][c])
+                    self.pieces[r][c] = 0
+        # Draw current board
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.get_piece(r, c)
+                if piece:
+                    x = c * SQUARE_SIZE + SQUARE_SIZE/2
+                    y = r * SQUARE_SIZE + SQUARE_SIZE/2
+                    text = self.canvas.create_text(x, y, text=UNICODE_PIECES[piece],
+                                                   font=('Arial', 32), tags='piece')
+                    self.pieces[r][c] = text
+
+    def _on_click(self, event):
+        col = event.x // SQUARE_SIZE
+        row = event.y // SQUARE_SIZE
+        if not in_bounds(row, col):
+            return
+        piece = self.game.get_piece(row, col)
+        if self.selected:
+            if (row, col) in self.legal_moves:
+                self.game.make_move(self.selected, (row, col))
+                self._post_move()
+                self.selected = None
+                self.legal_moves = []
+                self._clear_highlights()
+            elif piece and piece[0] == ('w' if self.game.current_turn == 'W' else 'b'):
+                self.selected = (row, col)
+                self.legal_moves = self.game.get_legal_moves(row, col)
+                self._highlight_selection()
+            else:
+                self.selected = None
+                self.legal_moves = []
+                self._clear_highlights()
+        else:
+            if piece and piece[0] == ('w' if self.game.current_turn == 'W' else 'b'):
+                self.selected = (row, col)
+                self.legal_moves = self.game.get_legal_moves(row, col)
+                self._highlight_selection()
+
+    def _highlight_selection(self):
+        self._clear_highlights()
+        r, c = self.selected
+        self.canvas.itemconfig(self.squares[r][c], fill=SELECT_COLOR)
+        for mr, mc in self.legal_moves:
+            self.canvas.itemconfig(self.squares[mr][mc], fill=HIGHLIGHT_COLOR)
+
+    def _clear_highlights(self):
+        for r in range(8):
+            for c in range(8):
+                color = LIGHT_COLOR if (r + c) % 2 == 0 else DARK_COLOR
+                self.canvas.itemconfig(self.squares[r][c], fill=color)
+
+    def _post_move(self):
+        self._draw_pieces()
+        self.header.config(text=self._turn_text())
+        if self.game.is_in_check('w' if self.game.current_turn == 'B' else 'b'):
+            self.header.config(text=self.header.cget('text') + " - Check!")
+        if self._is_checkmate():
+            winner = "White" if self.game.current_turn == 'B' else "Black"
+            messagebox.showinfo("Checkmate", f"{winner} wins by checkmate!")
+            self._new_game()
+
+    def _is_checkmate(self) -> bool:
+        color = 'w' if self.game.current_turn == 'W' else 'b'
+        for r in range(8):
+            for c in range(8):
+                if self.game.get_piece(r, c) == color + 'K':
+                    continue
+                if self.game.get_piece(r, c) and self.game.get_piece(r, c)[0] == color:
+                    if self.game.get_legal_moves(r, c):
+                        return False
+        return self.game.is_in_check(color)
+
+    def _new_game(self):
+        if messagebox.askyesno("New Game", "Start a new game?"):
+            self.game = ChessGame()
+            self.selected = None
+            self.legal_moves = []
+            self._clear_highlights()
+            self._draw_pieces()
+            self.header.config(text=self._turn_text())
+
+    def _save_game(self):
+        path = filedialog.asksaveasfilename(defaultextension=".json",
+                                            filetypes=[("JSON Files", "*.json")])
+        if path:
+            self.game.save_game(path)
+            messagebox.showinfo("Save Game", f"Game saved to {path}")
+
+    def _load_game(self):
+        path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json")])
+        if path:
+            self.game.load_game(path)
+            self.selected = None
+            self.legal_moves = []
+            self._clear_highlights()
+            self._draw_pieces()
+            self.header.config(text=self._turn_text())
+            messagebox.showinfo("Load Game", f"Game loaded from {path}")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ChessGUI(root)
+    root.mainloop()
