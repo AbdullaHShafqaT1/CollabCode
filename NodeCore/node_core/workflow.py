@@ -20,6 +20,7 @@ from pathlib import Path
 from node_core.tools import NodeForge, NodeInsight, NodeLog, NodePulse
 from node_core import incremental as inc
 from node_core import conventions
+from node_core import codemap
 
 STATE_FILE = "state.json"  # resumable workflow state inside .cloudcode/
 PY_COMMANDS = {"read", "bash", "sh", "shell", "cmd", "powershell"}
@@ -99,6 +100,11 @@ class TaskWorkflow:
         self.test_audit = None
         self.audited = set()  # test names already judged, so an audit is never repeated
         self.convention_counts = {}  # issue -> rounds reported; capped so a false alarm cannot stall
+        # Read memory: what the model has looked at, re-shown (current contents) in
+        # later prompts, because trimmed conversation history forgets large reads.
+        self.read_targets = []      # file paths or function selectors, most recent last
+        self.read_only_rounds = 0   # consecutive replies that only read
+        self.read_hashes = {}       # path -> content hash when last read (detects unchanged re-reads)
         # Snapshot caller-owned criteria before the model can change the workspace.
         if acceptance is None:
             path = self.workspace / ".cloudcode" / "acceptance.json"
@@ -128,7 +134,7 @@ class TaskWorkflow:
         criteria_dir = self.workspace / ".cloudcode"
         if criteria_dir.exists():
             for path in criteria_dir.iterdir():
-                if path.is_file() and path.name != STATE_FILE:
+                if path.is_file() and path.name not in (STATE_FILE, "run.lock"):
                     self.protected_files[path.relative_to(self.workspace).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
         if resume:
             self._load_state()
@@ -144,6 +150,7 @@ class TaskWorkflow:
                  "best": self.best, "resample": self.resample, "reverts": self.reverts,
                  "resample_tried": self.resample_tried, "test_audit": self.test_audit,
                  "audited": sorted(self.audited), "convention_counts": self.convention_counts,
+                 "read_targets": self.read_targets,
                  "files_created": sorted(self.files_created), "files_modified": sorted(self.files_modified)}
         try:
             path = self._state_path()
@@ -176,6 +183,7 @@ class TaskWorkflow:
         self.test_audit = state.get("test_audit")
         self.audited = set(state.get("audited", []))
         self.convention_counts = dict(state.get("convention_counts", {}))
+        self.read_targets = list(state.get("read_targets", []))
         self.files_created = set(state.get("files_created", []))
         self.files_modified = set(state.get("files_modified", []))
         self.resumed = True
@@ -185,7 +193,7 @@ class TaskWorkflow:
     def initial_prompt(self):
         """First prompt when the default phased prompt does not apply, else None."""
         if self.resumed:
-            errors = self.verify() if self.phase >= 4 else []
+            errors = self.verify(final=self.phase >= 5) if self.phase >= 4 else []
             return self.next_prompt(errors, [f"Resumed saved run at phase {self.phase}."])
         if self.incremental and not self.single_file:
             self._maybe_start_draft()
@@ -424,6 +432,26 @@ class TaskWorkflow:
                 errors.append(f"{name}: {exc}")
         return errors
 
+    def trace_check_script(self, command):
+        """Trace a failing acceptance check that runs a Python script, if it does."""
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return ""
+        script = next((p for p in parts[1:] if p.endswith(".py") and not p.startswith("-")), None)
+        if not script or any(p == "-c" or p == "-m" for p in parts[1:parts.index(script)]):
+            return ""
+        path = (self.workspace / script) if not Path(script).is_absolute() else Path(script)
+        if not path.is_file():
+            return ""
+        try:
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name("behavior_trace.py")),
+                                     str(self.workspace), "--script", str(path)], cwd=self.workspace,
+                                    capture_output=True, text=True, timeout=90)
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return result.stdout.strip()[:4000] if result.returncode == 0 else ""
+
     def behavior_trace(self, module):
         """Concrete call/return evidence for failing tests; empty when unavailable."""
         try:
@@ -551,7 +579,13 @@ class TaskWorkflow:
             for check in self.checks:
                 result = self.execute(check["command"], "acceptance", check["requirement"])
                 if not self.passed(result):
-                    errors.append(check["requirement"] + ":\n" + command_output(result))
+                    errors.append("Acceptance check failed: " + check["requirement"] + ":\n" + command_output(result))
+                    observed = self.trace_check_script(check["command"])
+                    if observed:
+                        # Which project functions the check exercised, with values: points
+                        # the repair at code even when the check names no function.
+                        errors.append("Observed behaviour in failing acceptance check (calls into project "
+                                      "code -> actual results):\n" + observed)
         after = self.snapshot()
         if after != before:
             errors.append("Project files changed during verification; repair the checks and verify the final files again.")
@@ -619,6 +653,19 @@ class TaskWorkflow:
         convention = [e for e in errors if e.startswith("Naming convention: ")]
         if focus is None and convention and not blockers:
             focus = convention[0][len("Naming convention: "):].split(":", 1)[0]
+        acceptance = [e for e in errors if e.startswith("Acceptance check failed: ")]
+        if focus is None and acceptance and not blockers:
+            # The deepest project file in the failing check's traceback, else the logic module.
+            for error in acceptance:
+                for path in reversed(re.findall(r'File "([^"]+\.py)"', error)):
+                    candidate = Path(path)
+                    if (candidate.is_absolute() and candidate.is_relative_to(self.workspace)
+                            and ".cloudcode" not in candidate.parts):
+                        focus = candidate.relative_to(self.workspace).as_posix()
+                        break
+                if focus:
+                    break
+            focus = focus or self.profile["logic"]
         if focus is None:
             keys = {1: ['logic'], 2: ['logic'], 3: ['gui'], 4: ['main', 'tests'], 5: ['guide']}[self.phase]
             needed = [self.profile[k] for k in keys] + list(self.required_files)
@@ -633,6 +680,10 @@ class TaskWorkflow:
                 focus = self.profile[keys[-1]]
         context = []
         shown = [focus, self.profile['logic']] + ([self.profile['tests']] if logic_bug else [])
+        mapped = self._map_context(errors) if self.phase >= 4 and not self.incremental else None
+        if mapped:
+            context.append(mapped)
+            shown = [self.profile['tests']] if logic_bug and self.profile.get('tests') in existing else []
         for name in dict.fromkeys(shown):
             if name not in existing:
                 continue
@@ -643,8 +694,10 @@ class TaskWorkflow:
                 limit = 14000 if name == focus else 7000
                 # Repairs: models copy whatever file they are shown. Show the outline
                 # plus full source only of the functions the failures involve.
+                # Full source when it fits: an outline hides the very code a repair
+                # may need (e.g. a method accidentally nested inside another one).
                 if name.endswith('.py') and (self.incremental and len(value) > 6000
-                                             or self.phase >= 4 and logic_bug and len(value) > 3000):
+                                             or self.phase >= 4 and (logic_bug or acceptance) and len(value) > limit):
                     # Short-reply endpoints are slow on long prompts: send the
                     # outline plus full source of functions the errors mention.
                     try:
@@ -660,6 +713,13 @@ class TaskWorkflow:
                                ('\n[Excerpt only; use a read block for the remaining lines.]' if len(value) > limit else ''))
         if blockers:
             next_action = f'NEXT RESPONSE: inspect/fix the blocking import in {focus}. '
+        elif acceptance:
+            names = [e[len("Acceptance check failed: "):].split(":\n", 1)[0] for e in acceptance]
+            next_action = ("NEXT RESPONSE: these independent acceptance checks fail: " + "; ".join(names) + ". "
+                           f"Their output above says exactly what is wrong. Fix {focus} (and any other file the "
+                           "output names) so they pass, following the original requirements; do not change the "
+                           "checks. Output ONLY the corrected function/method definitions, one ```python block per "
+                           "file whose first line is '# filename: <file>'. ")
         elif convention:
             files = sorted({e[len("Naming convention: "):].split(":", 1)[0] for e in convention})
             next_action = ("NEXT RESPONSE: the code or tests spell task-defined values differently from the task "
@@ -1048,6 +1108,115 @@ class TaskWorkflow:
         return True
 
     # --------------------------------------------------------- repair quality
+    READ_ONLY_COMMAND = re.compile(r"^(?:(?:sed\s+-n|cat|head|tail|nl|wc|ls|grep|find|less|more)\b[^;&|>]*)"
+                                   r"(?:\n(?:sed\s+-n|cat|head|tail|nl|wc|ls|grep|find|less|more)\b[^;&|>]*)*$")
+    READ_MEMORY_BUDGET = 10000  # characters of already-read code carried into the next prompt
+    LARGE_READ = 6000           # a whole-file read above this is not repeated; functions are served instead
+    READING_PAUSED = ("READING PAUSED: you have spent several replies only reading, and you already read this; "
+                      "what you read is shown above. Re-reads are not served until you send a fix (corrected "
+                      "function definitions). New, unread files can still be read.")
+
+    def _repeat_large_read(self, path):
+        """True when a large file is requested again although it has not changed since it was read."""
+        try:
+            data = self.path(path).read_bytes()
+        except (OSError, ValueError):
+            return False
+        digest = hashlib.sha256(data).hexdigest()
+        seen = self.read_hashes.get(path)
+        self.read_hashes[path] = digest
+        return len(data) > self.LARGE_READ and seen == digest
+
+    def _repeat_read_note(self, path):
+        return (f"NOT RE-READ: {path} is unchanged since you last read it. Reading whole files again wastes your "
+                f"reply budget. Use the CODE MAP above and request only the functions you need (e.g. "
+                f"`{path}::<name>`), or send your fix now.")
+
+    def _already_read(self, path):
+        return any(t == path or t.split(":", 1)[0] == path for t in self.read_targets)
+
+    def _remember_read(self, target):
+        if target in self.read_targets:
+            self.read_targets.remove(target)
+        self.read_targets.append(target)
+        del self.read_targets[:-8]
+
+    def _read_memory(self):
+        """(text, labels shown): current contents of what the model already read, newest first."""
+        if not self.read_targets:
+            return "", set()
+        parts, shown, used, sources = [], set(), 0, None
+        for target in reversed(self.read_targets):
+            ranged = re.fullmatch(r"(.+):(\d+)-(\d+)", target)
+            path = ranged.group(1) if ranged else target
+            if path.endswith((".py", ".txt", ".md", ".json", ".toml", ".cfg", ".ini")) and "::" not in path:
+                try:
+                    lines = self.path(path).read_text(encoding="utf-8").splitlines()
+                except (OSError, ValueError):
+                    continue
+                first, last = (int(ranged.group(2)), int(ranged.group(3))) if ranged else (1, len(lines))
+                body = "\n".join(f"{i:4d}  {lines[i - 1]}" for i in range(max(first, 1), min(last, len(lines)) + 1))
+                block = f"FILE {target} (current contents):\n{body}"
+            else:
+                sources = sources if sources is not None else self._project_sources()
+                block = codemap.source_of(sources, target) or ""
+            if block and len(block) > self.READ_MEMORY_BUDGET:
+                parts.append(f"({target} was already read in full; it is too large to repeat here. Use the CODE "
+                             f"MAP and request specific functions such as `{path}::<name>`.)")
+                continue
+            if not block or used + len(block) > self.READ_MEMORY_BUDGET:
+                parts.append(f"(also read earlier: {target}; ask again only if you need it)")
+                continue
+            parts.append(block)
+            shown.add(target)
+            used += len(block)
+        if not parts:
+            return "", set()
+        return ("CODE YOU HAVE ALREADY READ (current contents, kept here because older messages are trimmed; "
+                "do NOT read these again):\n" + "\n\n".join(parts)), shown
+
+    MAP_THRESHOLD = 6000   # characters of project code above which repairs get a map
+    FOCUS_BUDGET = 8000    # characters of full function source sent with the map
+
+    def _map_context(self, errors):
+        """Code map plus the most relevant functions' source, or None for small projects."""
+        tests = self.profile.get("tests")
+        sources = {k: v for k, v in self._project_sources().items() if k != tests}
+        if sum(len(v) for v in sources.values()) <= self.MAP_THRESHOLD:
+            return None
+        entries = codemap.build(sources)
+        text = "\n".join(errors)
+        by_name = {}
+        for e in entries:
+            by_name.setdefault(e.name, []).append(e)
+        order = [e.qualname for e in entries if e.flags]
+        # Functions failing tests/checks called directly (from behaviour traces) come next:
+        # they are where the wrong results were produced.
+        traced = "\n".join(e for e in errors if e.startswith("Observed behaviour"))
+        order += [q for n in re.findall(r"^\s{4}(?:[A-Za-z_]\w*\.)?([A-Za-z_]\w*)\(.*?\) -> ", traced, re.M)
+                  if not n.startswith("__") for q in (x.qualname for x in by_name.get(n, []))]
+        order += [q for n in re.findall(r'File "[^"]+", line \d+, in (\w+)', text) for q in
+                  (x.qualname for x in by_name.get(n, []))]
+        ranking = re.search(r"^SUSPICIOUS[^:]*: (.+)$", text, re.M)
+        if ranking:
+            for item in ranking.group(1).split(", "):
+                short = item.split("=", 1)[0].rsplit(".", 1)[-1]
+                order += [x.qualname for x in by_name.get(short, [])]
+        words = set(re.findall(r"[A-Za-z_]\w*", text))
+        order += [e.qualname for e in entries if e.name in words and not e.name.startswith("__")]
+        chosen, used = [], 0
+        for qual in dict.fromkeys(order):
+            entry = next(e for e in entries if e.qualname == qual)
+            snippet = codemap.source_of(sources, f"{entry.file}::{qual}") or ""
+            if used + len(snippet) > self.FOCUS_BUDGET:
+                continue
+            chosen.append(snippet)
+            used += len(snippet)
+        return (codemap.render(entries) +
+                ("\n\nFULL SOURCE OF THE MOST RELEVANT FUNCTIONS:\n" + "\n\n".join(chosen) if chosen else "") +
+                "\n\nTo see any other function, reply with a ```read block listing one selector per line, "
+                "e.g. `file.py::Class.method` (or just the function name). Then send only the functions you change.")
+
     def _project_sources(self):
         files = {}
         for rel in self.snapshot():
@@ -1335,6 +1504,7 @@ class TaskWorkflow:
                                 f"({len(lines)} lines total)")
                 if match.get("complete") is False:
                     match["parts"] = pending["parts"]
+        wrote_or_ran = False
         for block in blocks:
             if self.should_stop():
                 self.stop("CANCELLED", "User requested cancellation")
@@ -1373,7 +1543,26 @@ class TaskWorkflow:
                 for name in code.splitlines():
                     name = name.strip()
                     try:
+                        if not name:
+                            continue
+                        if ("::" in name or not name.endswith((".py", ".txt", ".md", ".json"))) \
+                                and codemap.SELECTOR.match(name) and not re.fullmatch(r"(.+):(\d+)-(\d+)", name):
+                            found = codemap.source_of(self._project_sources(), name)
+                            if found is None:
+                                raise ValueError(f"No function matches {name!r}; see the CODE MAP for names")
+                            self.read_evidence.add((name, hashlib.sha256(found.encode()).hexdigest()))
+                            feedback.append(found)
+                            self._remember_read(name)
+                            continue
                         match = re.fullmatch(r"(.+):(\d+)-(\d+)", name)
+                        target_file = match.group(1) if match else name
+                        if self.read_only_rounds >= 3 and self._already_read(target_file):
+                            feedback.append(self.READING_PAUSED)
+                            continue
+                        wide = match and int(match.group(3)) - int(match.group(2)) >= 150
+                        if (not match or wide) and self._repeat_large_read(target_file):
+                            feedback.append(self._repeat_read_note(target_file))
+                            continue
                         options = {}
                         label = name
                         if match:
@@ -1384,6 +1573,7 @@ class TaskWorkflow:
                         if res.get("status") != "success":
                             raise ValueError(res.get("error", "Read failed"))
                         self.files_read.add(name)
+                        self._remember_read(label)  # keep the exact range asked for
                         value = res.get('content', '')
                         self.read_evidence.add((label, hashlib.sha256(value.encode()).hexdigest()))
                         feedback.append(f"FILE {label}:\n{value[:16000]}" +
@@ -1391,11 +1581,25 @@ class TaskWorkflow:
                     except (OSError, ValueError) as exc:
                         errors.append(str(exc))
             elif lang in {"bash", "sh", "shell", "cmd", "powershell"}:
+                if self.READ_ONLY_COMMAND.match(code.strip()):
+                    files = [t for t in re.findall(r"[\w./-]+\.(?:py|txt|md|json|toml|cfg|ini)", code)
+                             if (self.workspace / t).is_file()]
+                    if self.read_only_rounds >= 3 and files and all(self._already_read(t) for t in files):
+                        feedback.append(self.READING_PAUSED)
+                        continue
+                    if files and all(self._repeat_large_read(t) for t in files):
+                        feedback.extend(self._repeat_read_note(t) for t in files)
+                        continue
+                    for token in files:
+                        self._remember_read(token)
+                else:
+                    wrote_or_ran = True
                 res = self.execute(code)
                 feedback.append(f"Command {code!r}, exit {res.get('exit_code')}:\n{command_output(res)}")
                 if not self.passed(res):
                     errors.append("Command failed; inspect its output and repair the cause.")
             elif name:
+                wrote_or_ran = True
                 try:
                     path = self.path(name)
                     if path.relative_to(self.workspace).parts[0].lower() == ".cloudcode":
@@ -1564,6 +1768,8 @@ class TaskWorkflow:
                     return self._build_recovery_feedback(errors, feedback)
                 else:
                     self.stop("STALLED", "Repeated iterations made no new file or phase progress")
+        read_only = bool(blocks) and not wrote_or_ran
+        self.read_only_rounds = self.read_only_rounds + 1 if read_only else 0
         self._save_state()
         if self.status != "IN_PROGRESS":
             return None
@@ -1591,8 +1797,26 @@ class TaskWorkflow:
         checkpoint, next_action = self.repair_checkpoint(errors)
 
         reverted = "".join(e + "\n" for e in errors if e.startswith("REVERTED"))
+        memory, shown = self._read_memory()
+        if memory:
+            # Drop raw read output only where the memory already holds that content.
+            def duplicated(item):
+                head = item.split("\n", 1)[0]
+                if head.startswith("FILE "):
+                    return head[len("FILE "):].rstrip(":") in shown
+                if head.startswith("FUNCTION "):
+                    return any(t in head for t in shown)
+                if item.startswith("Command "):
+                    cmd = item[len("Command "):].split(", exit", 1)[0].strip("'\"")
+                    return bool(self.READ_ONLY_COMMAND.match(cmd)) and any(t in cmd for t in shown)
+                return False
+            feedback = [f for f in feedback if not duplicated(f)]
+        if self.read_only_rounds >= 2:
+            next_action = (f"STOP READING: your last {self.read_only_rounds} replies only read files, and everything "
+                           "you read is shown above. This reply MUST contain the fix as corrected function "
+                           "definitions (one ```python block per file with '# filename: <file>'). " + next_action)
         return ("Original task requirements (unchanged):\n" + self.task + "\n\n" + checkpoint + "\n\n" +
-                reverted +
+                (memory + "\n\n" if memory else "") + reverted +
                 "Iteration finished; the overall task is still incomplete. TERMINATE, PHASE_COMPLETE and "
                 "TASK_COMPLETE are requests for evaluation, never proof of completion.\n" +
                 adaptive_prefix +

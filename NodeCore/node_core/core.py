@@ -39,6 +39,30 @@ from node_core.tools import NodeInsight, NodeForge, NodePulse, NodeLink, NodeLog
 # In-memory store for active sessions
 _ACTIVE_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
+def acquire_workspace_lock(lock: Path) -> None:
+    """Refuse a second concurrent run on one workspace; replace a stale lock.
+
+    Two runs editing the same files would silently overwrite each other.
+    """
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        owner = int(lock.read_text().strip() or 0)
+    except (OSError, ValueError):
+        owner = 0
+    if owner and owner != os.getpid():
+        try:
+            os.kill(owner, 0)
+            alive = True
+        except ProcessLookupError:
+            alive = False
+        except PermissionError:
+            alive = True
+        if alive:
+            raise RuntimeError(f"Another CloudCode run (process {owner}) is already using this workspace; "
+                               f"stop it first or delete {lock} if it is stale.")
+    lock.write_text(str(os.getpid()))
+
+
 def create_cloud_llm_config(
     base_url: str = "https://min-referenced-celtic-fiscal.trycloudflare.com",
     model: str = "qwen2.5-coder:32b",
@@ -55,8 +79,8 @@ def create_cloud_llm_config(
             }
         ],
         "temperature": 0.2,
-        # Long replies from a slow GPU (e.g. a 14B model on a Colab T4) take minutes.
-        "timeout": 600,
+        # Long replies from a slow GPU (e.g. a reasoning model on a Colab T4) take minutes.
+        "timeout": 900,
         "max_tokens": 16384,
     }
 
@@ -471,7 +495,7 @@ class NodeCore:
                    acceptance: Optional[Dict[str, Any]] = None,
                    should_stop: Optional[Callable[[], bool]] = None,
                    compat: bool = False, endpoint_resolver: Optional[Callable[[], str]] = None,
-                   resume: bool = False) -> Dict[str, Any]:
+                   resume: bool = False, prompt_budget_chars: Optional[int] = None) -> Dict[str, Any]:
         """Keep setup failures as reviewable outcomes, like execution failures.
 
         compat: the endpoint drops system/history or caps replies; fold rules
@@ -480,10 +504,22 @@ class NodeCore:
         outages (and switching to a new URL) instead of failing the run.
         resume: continue from the workspace's saved workflow state.
         """
+        lock = Path(self.workspace_root) / ".cloudcode" / "run.lock"
         try:
-            return self._start_task(task_prompt, max_rounds, acceptance, should_stop,
-                                    compat=compat, endpoint_resolver=endpoint_resolver, resume=resume)
+            acquire_workspace_lock(lock)
+        except RuntimeError as exc:
+            return {"status": "FAILED", "termination_reason": str(exc), "original_task": task_prompt,
+                    "rounds": 0, "turns": 0, "max_rounds": max_rounds, "messages": [], "message_count": 0,
+                    "responses_received": 0, "commands": [], "verification": [], "completed_phases": [],
+                    "remaining_requirements": [str(exc)]}
+        try:
+            result = self._start_task(task_prompt, max_rounds, acceptance, should_stop,
+                                      compat=compat, endpoint_resolver=endpoint_resolver, resume=resume,
+                                      prompt_budget_chars=prompt_budget_chars)
+            lock.unlink(missing_ok=True)
+            return result
         except Exception as exc:
+            lock.unlink(missing_ok=True)
             self.status = "FAILED"
             report = {"status": "FAILED", "termination_reason": str(exc), "original_task": task_prompt,
                       "rounds": 0, "turns": 0, "max_rounds": max_rounds, "messages": [],
@@ -503,7 +539,7 @@ class NodeCore:
                    acceptance: Optional[Dict[str, Any]] = None,
                    should_stop: Optional[Callable[[], bool]] = None,
                    compat: bool = False, endpoint_resolver: Optional[Callable[[], str]] = None,
-                   resume: bool = False) -> Dict[str, Any]:
+                   resume: bool = False, prompt_budget_chars: Optional[int] = None) -> Dict[str, Any]:
         """
         Execute the CoderAgent/UserProxyRunner conversation with explicit evidence.
         max_rounds counts model responses including local processing of the last
@@ -536,6 +572,8 @@ class NodeCore:
             coder_options["fold_system"] = True
         if endpoint_resolver is not None:
             coder_options.update(endpoint_resolver=endpoint_resolver, should_stop=should_stop)
+        if prompt_budget_chars:
+            coder_options["prompt_budget_chars"] = prompt_budget_chars
         if coder_options:
             import inspect
             try:

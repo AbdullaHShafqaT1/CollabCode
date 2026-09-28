@@ -1,0 +1,330 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+import math
+from ludo_logic import (
+    LudoGame,
+    BOARD_SIZE,
+    OUTER_TRACK_LENGTH,
+    HOME_STRETCH_LENGTH,
+    PLAYER_COLORS,
+    START_SQUARES,
+    STAR_SQUARES,
+    SAFE_SQUARES,
+    HOME_BASE,
+    ACTIVE_TRACK,
+    HOME_STRETCH,
+    FINISHED,
+)
+
+CELL_SIZE = 40
+CANVAS_SIZE = BOARD_SIZE * CELL_SIZE
+CENTER = BOARD_SIZE // 2
+CENTER_COORD = (CENTER * CELL_SIZE + CELL_SIZE // 2, CENTER * CELL_SIZE + CELL_SIZE // 2)
+
+def compute_track_coords():
+    coords = []
+    for col in range(1, BOARD_SIZE - 1):
+        coords.append((0, col))
+    for row in range(1, BOARD_SIZE - 1):
+        coords.append((row, BOARD_SIZE - 1))
+    for col in range(BOARD_SIZE - 2, 0, -1):
+        coords.append((BOARD_SIZE - 1, col))
+    for row in range(BOARD_SIZE - 2, 0, -1):
+        coords.append((row, 0))
+    return coords
+
+TRACK_COORDS = compute_track_coords()
+
+HOME_STRETCH_COORDS = {
+    0: [(r, 1) for r in range(2, 8)],
+    1: [(1, c) for c in range(13, 7, -1)],
+    2: [(r, 13) for r in range(12, 6, -1)],
+    3: [(13, c) for c in range(12, 6, -1)],
+}
+
+BASE_POSITIONS = {
+    0: (1, 1),
+    1: (1, 13),
+    2: (13, 13),
+    3: (13, 1),
+}
+
+BASE_SLOTS = [(0, 0), (0, 1), (1, 0), (1, 1)]
+
+def pos_to_canvas(row, col):
+    return (col * CELL_SIZE + CELL_SIZE // 2, row * CELL_SIZE + CELL_SIZE // 2)
+
+class LudoGUI(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Ludo")
+        self.resizable(False, False)
+        self.game = None
+        self.last_roll = None
+        self.valid_tokens = set()
+        self.create_widgets()
+        self.new_game()
+
+    def create_widgets(self):
+        bar = ttk.Frame(self)
+        bar.pack(fill=tk.X)
+        ttk.Button(bar, text="New Game", command=self.new_game).pack(side=tk.LEFT, padx=2, pady=2)
+        ttk.Button(bar, text="Save Game", command=self.save_game).pack(side=tk.LEFT, padx=2, pady=2)
+        ttk.Button(bar, text="Load Game", command=self.load_game).pack(side=tk.LEFT, padx=2, pady=2)
+        ttk.Button(bar, text="Rules", command=self.show_rules).pack(side=tk.LEFT, padx=2, pady=2)
+
+        dice_frame = ttk.Frame(self)
+        dice_frame.pack(side=tk.RIGHT, padx=10)
+        self.dice_label = ttk.Label(dice_frame, text="Roll:", font=("Arial", 14))
+        self.dice_label.pack()
+        self.roll_button = ttk.Button(dice_frame, text="Roll Dice", command=self.roll_dice)
+        self.roll_button.pack(pady=5)
+
+        self.turn_label = ttk.Label(self, text="Turn: ", font=("Arial", 12))
+        self.turn_label.pack(pady=5)
+
+        self.canvas = tk.Canvas(self, width=CANVAS_SIZE, height=CANVAS_SIZE, bg="white")
+        self.canvas.pack()
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+
+        self.draw_board()
+
+    def draw_board(self):
+        self.canvas.delete("all")
+        for idx, (row, col) in enumerate(TRACK_COORDS):
+            x1 = col * CELL_SIZE
+            y1 = row * CELL_SIZE
+            x2 = x1 + CELL_SIZE
+            y2 = y1 + CELL_SIZE
+            self.canvas.create_rectangle(x1, y1, x2, y2, fill="#eeeeee", outline="black")
+            if idx in STAR_SQUARES:
+                self.canvas.create_text(
+                    x1 + CELL_SIZE // 2, y1 + CELL_SIZE // 2, text="*", font=("Arial", 12)
+                )
+        for player, coords in HOME_STRETCH_COORDS.items():
+            for (row, col) in coords:
+                x1 = col * CELL_SIZE
+                y1 = row * CELL_SIZE
+                x2 = x1 + CELL_SIZE
+                y2 = y1 + CELL_SIZE
+                self.canvas.create_rectangle(x1, y1, x2, y2, fill="#dddddd", outline="black")
+        cx, cy = pos_to_canvas(CENTER, CENTER)
+        self.canvas.create_rectangle(
+            cx - CELL_SIZE // 2,
+            cy - CELL_SIZE // 2,
+            cx + CELL_SIZE // 2,
+            cy + CELL_SIZE // 2,
+            fill="#ffcc00",
+            outline="black",
+        )
+        for player, (row, col) in BASE_POSITIONS.items():
+            x1 = col * CELL_SIZE
+            y1 = row * CELL_SIZE
+            x2 = x1 + CELL_SIZE
+            y2 = y1 + CELL_SIZE
+            self.canvas.create_rectangle(x1, y1, x2, y2, fill=PLAYER_COLORS[player], outline="black")
+
+    def new_game(self):
+        num = self.ask_num_players()
+        if num is None:
+            return
+        self.game = LudoGame(num)
+        self.last_roll = None
+        self.valid_tokens.clear()
+        self.update_ui()
+
+    def ask_num_players(self):
+        return simpledialog.askinteger(
+            "Players",
+            "Number of players (2-4):",
+            minvalue=2,
+            maxvalue=4,
+            initialvalue=4,
+        )
+
+    def save_game(self):
+        if self.game is None:
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json")],
+        )
+        if path:
+            self.game.save_game(path)
+
+    def load_game(self):
+        path = filedialog.askopenfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json")],
+        )
+        if path:
+            self.game = LudoGame.load_game(path)
+            self.last_roll = None
+            self.valid_tokens.clear()
+            self.update_ui()
+
+    def show_rules(self):
+        rules = (
+            "Ludo Rules:\n\n"
+            "1. Roll a die to move a token.\n"
+            "2. A roll of 6 allows a token to leave the home base and grants an extra roll.\n"
+            "3. Landing on an opponent's token sends it back to its home base and grants an extra roll.\n"
+            "4. Safe squares (starting squares and star squares) cannot be captured.\n"
+            "5. Exact roll is required to enter the finish center.\n"
+            "6. First player to move all four tokens to the center wins.\n"
+            "7. The game records 1st, 2nd, 3rd rankings."
+        )
+        messagebox.showinfo("Rules", rules)
+
+    def roll_dice(self):
+        if self.game is None or self.game.game_over:
+            return
+        roll = self.game.roll_dice()
+        self.last_roll = roll
+        self.valid_tokens = set()
+        for token_index in range(4):
+            if self.game.move_token(self.game.current_player_index, token_index, 0):
+                pass
+        self.valid_tokens = set()
+        for token_index in range(4):
+            token = self.game.get_token(self.game.current_player_index, token_index)
+            if token.state != FINISHED:
+                if self.game.move_token(self.game.current_player_index, token_index, roll):
+                    self.valid_tokens.add((self.game.current_player_index, token_index))
+        if not self.valid_tokens:
+            getattr(self.game, "_advance_turn")(roll)
+        self.update_ui()
+
+    def on_canvas_click(self, event):
+        if self.game is None or self.game.game_over or self.last_roll is None:
+            return
+        token = self.get_token_at_canvas(event.x, event.y)
+        if token is None:
+            return
+        key = (token.player_index, token.token_index)
+        if key not in self.valid_tokens:
+            return
+        moved = self.game.move_token(token.player_index, token.token_index, self.last_roll)
+        if moved:
+            self.last_roll = None
+            self.valid_tokens.clear()
+            if len(self.game.ranking) == len(self.game.players):
+                self.game.game_over = True
+                ranking_names = [PLAYER_COLORS[i] for i in self.game.ranking]
+                messagebox.showinfo("Game Over", f"Ranking: {', '.join(ranking_names)}")
+            self.update_ui()
+
+    def get_token_at_canvas(self, x, y):
+        radius = CELL_SIZE // 3
+        for player in self.game.players:
+            for token in player.tokens:
+                if token.state == HOME_BASE:
+                    base_row, base_col = BASE_POSITIONS[player.index]
+                    for idx, (dr, dc) in enumerate(BASE_SLOTS):
+                        if token.token_index == idx:
+                            cx, cy = pos_to_canvas(base_row + dr, base_col + dc)
+                            if math.hypot(cx - x, cy - y) <= radius:
+                                return token
+                elif token.state == ACTIVE_TRACK:
+                    if token.track_pos is None:
+                        continue
+                    cx, cy = pos_to_canvas(*TRACK_COORDS[token.track_pos])
+                    if math.hypot(cx - x, cy - y) <= radius:
+                        return token
+                elif token.state == HOME_STRETCH:
+                    if token.home_pos is None:
+                        continue
+                    cx, cy = pos_to_canvas(*HOME_STRETCH_COORDS[player.index][token.home_pos])
+                    if math.hypot(cx - x, cy - y) <= radius:
+                        return token
+                elif token.state == FINISHED:
+                    cx, cy = CENTER_COORD
+                    if math.hypot(cx - x, cy - y) <= radius:
+                        return token
+        return None
+
+    def update_ui(self):
+        if self.game is None:
+            self.turn_label.config(text="Turn: ")
+            self.dice_label.config(text="Roll:")
+            self.roll_button.config(state=tk.DISABLED)
+            self.canvas.delete("token", "highlight")
+            return
+        self.roll_button.config(state=tk.NORMAL)
+        if self.game.game_over:
+            self.roll_button.config(state=tk.DISABLED)
+        self.turn_label.config(text=f"Turn: {PLAYER_COLORS[self.game.current_player_index]}")
+        roll_text = f"Roll: {self.last_roll}" if self.last_roll else "Roll:"
+        self.dice_label.config(text=roll_text)
+        self.canvas.delete("token", "highlight")
+        self.draw_tokens()
+        self.highlight_valid_tokens()
+
+    def draw_tokens(self):
+        radius = CELL_SIZE // 3
+        for player in self.game.players:
+            for token in player.tokens:
+                if token.state == HOME_BASE:
+                    base_row, base_col = BASE_POSITIONS[player.index]
+                    for idx, (dr, dc) in enumerate(BASE_SLOTS):
+                        if token.token_index == idx:
+                            cx, cy = pos_to_canvas(base_row + dr, base_col + dc)
+                            self.canvas.create_oval(
+                                cx - radius, cy - radius, cx + radius, cy + radius,
+                                fill=PLAYER_COLORS[player.index], outline="black", width=2,
+                                tags="token"
+                            )
+                            self.canvas.create_text(cx, cy, text=str(token.token_index + 1), tags="token")
+                elif token.state == ACTIVE_TRACK:
+                    if token.track_pos is None:
+                        continue
+                    cx, cy = pos_to_canvas(*TRACK_COORDS[token.track_pos])
+                    self.canvas.create_oval(
+                        cx - radius, cy - radius, cx + radius, cy + radius,
+                        fill=PLAYER_COLORS[player.index], outline="black", width=2,
+                        tags="token"
+                    )
+                    self.canvas.create_text(cx, cy, text=str(token.token_index + 1), tags="token")
+                elif token.state == HOME_STRETCH:
+                    if token.home_pos is None:
+                        continue
+                    cx, cy = pos_to_canvas(*HOME_STRETCH_COORDS[player.index][token.home_pos])
+                    self.canvas.create_oval(
+                        cx - radius, cy - radius, cx + radius, cy + radius,
+                        fill=PLAYER_COLORS[player.index], outline="black", width=2,
+                        tags="token"
+                    )
+                    self.canvas.create_text(cx, cy, text=str(token.token_index + 1), tags="token")
+                elif token.state == FINISHED:
+                    cx, cy = CENTER_COORD
+                    self.canvas.create_oval(
+                        cx - radius, cy - radius, cx + radius, cy + radius,
+                        fill=PLAYER_COLORS[player.index], outline="black", width=2,
+                        tags="token"
+                    )
+                    self.canvas.create_text(cx, cy, text=str(token.token_index + 1), tags="token")
+
+        def highlight_valid_tokens(self):
+            radius = CELL_SIZE // 3
+            for player_index, token_index in self.valid_tokens:
+                token = self.game.get_token(player_index, token_index)
+                if token.state == HOME_BASE:
+                    base_row, base_col = BASE_POSITIONS[player_index]
+                    dr, dc = BASE_SLOTS[token_index]
+                    cx, cy = pos_to_canvas(base_row + dr, base_col + dc)
+                elif token.state == ACTIVE_TRACK:
+                    if token.track_pos is None:
+                        continue
+                    cx, cy = pos_to_canvas(*TRACK_COORDS[token.track_pos])
+                elif token.state == HOME_STRETCH:
+                    if token.home_pos is None:
+                        continue
+                    cx, cy = pos_to_canvas(*HOME_STRETCH_COORDS[player_index][token.home_pos])
+                elif token.state == FINISHED:
+                    cx, cy = CENTER_COORD
+                else:
+                    continue
+                self.canvas.create_oval(
+                    cx - radius, cy - radius, cx + radius, cy + radius,
+                    outline="gold", width=3, tags="highlight"
+                )

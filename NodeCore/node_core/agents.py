@@ -428,28 +428,56 @@ MANDATE FOR THIS TURN:
 """
 
 
-def bounded_model_messages(messages, max_history_chars=36000):
+def bounded_model_messages(messages, max_history_chars=36000, max_total_chars=None):
     """Retain the original specification and latest feedback, not old failed code.
 
     Only the inference view changes; AutoGen's complete execution/evidence
-    history stays intact. The mandatory first/latest messages are never clipped.
-    This is a character budget for optional history, not a tokenizer claim.
+    history stays intact. With ``max_total_chars`` (derived from the model's
+    context window) the whole view must fit: the latest message is always kept
+    (every runner prompt is self-contained), recent messages are added while
+    they fit, and the long original prompt only if room remains. Character
+    budgets are estimates, not tokenizer counts.
     """
-    if not messages or len(messages) < 3:
+    if not messages:
         return messages
-    used = len(str(messages[0].get('content', ''))) + len(str(messages[-1].get('content', '')))
+    size = lambda m: len(str(m.get('content', '') or ''))
+    if max_total_chars is None:
+        if len(messages) < 3:
+            return messages
+        used = size(messages[0]) + size(messages[-1])
+        recent = []
+        for message in reversed(messages[1:-1]):
+            if used + size(message) > max_history_chars or len(recent) >= 3:
+                break
+            recent.append(message)
+            used += size(message)
+        return [messages[0], *reversed(recent), messages[-1]]
+    last = dict(messages[-1])
+    content = str(last.get('content', '') or '')
+    if len(content) > max_total_chars:
+        # Keep the head (task) and the tail (current state and instructions).
+        head = int(max_total_chars * 0.3)
+        tail = max_total_chars - head - 80
+        last['content'] = content[:head] + "\n[... middle of this prompt trimmed to fit the model context ...]\n" + content[-tail:]
+    used = size(last)
     recent = []
     for message in reversed(messages[1:-1]):
-        size = len(str(message.get('content', '')))
-        if used + size > max_history_chars or len(recent) >= 3:
+        if used + size(message) > max_total_chars or len(recent) >= 3:
             break
         recent.append(message)
-        used += size
-    return [messages[0], *reversed(recent), messages[-1]]
+        used += size(message)
+    view = [*reversed(recent), last]
+    if len(messages) > 1 and used + size(messages[0]) <= max_total_chars:
+        view.insert(0, messages[0])
+    # Keep roles alternating as the chat template expects: never start on an assistant turn.
+    while len(view) > 1 and view[0].get('role') == 'assistant':
+        view.pop(0)
+    return view
 
 
 def create_coder_agent(llm_config: Dict[str, Any], fold_system: bool = False,
-                       endpoint_resolver=None, should_stop=None) -> ConversableAgent:
+                       endpoint_resolver=None, should_stop=None,
+                       prompt_budget_chars=None) -> ConversableAgent:
     """Streamlined autonomous coder agent tailored for Qwen-Coder and dual-agent runner."""
     agent = ConversableAgent(
         name="CoderAgent",
@@ -493,13 +521,17 @@ STRICT OPERATIONAL RULES & NEGATIVE CONSTRAINTS:
         llm_config=llm_config,
     )
     rules = agent.system_message
+    budget = prompt_budget_chars
+
+    def view(messages):
+        return bounded_model_messages(messages, max_total_chars=budget)
     if fold_system:
         # Endpoints that forward only the last user message never see the
         # system prompt; repeat the rules where the model can read them.
         agent.register_hook("process_all_messages_before_reply",
-                            lambda messages: fold_rules_into_last(bounded_model_messages(messages), rules))
+                            lambda messages: fold_rules_into_last(view(messages), rules))
     else:
-        agent.register_hook("process_all_messages_before_reply", bounded_model_messages)
+        agent.register_hook("process_all_messages_before_reply", view)
     if endpoint_resolver is not None:
         agent.register_reply([ConversableAgent, None], make_resilient_reply(endpoint_resolver, should_stop),
                              position=0)
@@ -540,6 +572,22 @@ def tool_calls_to_blocks(reply):
             args = _json.loads(fget("arguments") or "{}")
         except ValueError:
             args = {"input": fget("arguments") or ""}
+        name = str(fget("name") or "")
+        path = args.get("path") or args.get("file") or args.get("filename") or args.get("file_path")
+        if path and not (args.get("cmd") or args.get("command") or args.get("code")):
+            # File viewers (e.g. repo_browser.open_file) become the runner's read block.
+            lo = args.get("line_start") or args.get("start_line") or args.get("start")
+            hi = args.get("line_end") or args.get("end_line") or args.get("end")
+            ref = f"{path}:{int(lo)}-{int(hi)}" if lo and hi else str(path)
+            blocks.append("```read\n" + ref + "\n```")
+            continue
+        query = args.get("query") or args.get("pattern") or args.get("regex")
+        if query and not (args.get("cmd") or args.get("command")):
+            blocks.append("```bash\ngrep -rn " + _shlex.quote(str(query)) + " .\n```")
+            continue
+        if not args and any(k in name.lower() for k in ("tree", "list", "ls")):
+            blocks.append("```bash\nls -R\n```")
+            continue
         cmd = args.get("cmd") or args.get("command") or args.get("input")
         code = args.get("code")
         if isinstance(cmd, list):
@@ -549,9 +597,21 @@ def tool_calls_to_blocks(reply):
         if cmd:
             blocks.append("```bash\n" + str(cmd).strip() + "\n```")
     if not blocks:
-        return reply
+        names = ", ".join(str((get(c, "function") or {}).get("name") if isinstance(get(c, "function"), dict)
+                              else getattr(get(c, "function"), "name", "?")) for c in calls)
+        # Never let an unknown tool call end the conversation with an empty reply.
+        return (f"(Tried to call unavailable tool(s): {names}. Use ```read, ```bash or ```python code blocks "
+                "instead.)")
     NodeLog.emit("TOOL_CALL_CONVERTED", {"calls": len(calls)})
     return "\n\n".join(blocks)
+
+
+def is_malformed_reply(exc) -> bool:
+    """A 200 response carrying an error body instead of choices: autogen fails
+    iterating the missing choices, or the parsed completion has no choices."""
+    text = str(exc)
+    return (isinstance(exc, (TypeError, AttributeError)) and "NoneType" in text
+            and ("iterable" in text or "choices" in text or "subscriptable" in text))
 
 
 def is_endpoint_outage(exc) -> bool:
@@ -594,7 +654,7 @@ def make_resilient_reply(endpoint_resolver, should_stop=None, wait=None, logger=
         model = str((cfg.get("config_list") or [{}])[0].get("model", "")).lower()
         if wanted_tokens and any(tag in model for tag in REASONING_MODELS):
             # Reasoning models spend part of max_tokens thinking before they answer.
-            wanted_tokens = max(wanted_tokens, 4096)
+            wanted_tokens = max(wanted_tokens, 6144)
         if cfg.get("temperature") != wanted or cfg.get("max_tokens") != wanted_tokens:
             from autogen import OpenAIWrapper
             cfg["temperature"] = wanted
@@ -631,6 +691,8 @@ def make_resilient_reply(endpoint_resolver, should_stop=None, wait=None, logger=
             raise box["error"]
         return box["result"]
 
+    malformed = [0]  # consecutive replies that arrived without a completion
+
     def resilient_reply(recipient, messages=None, sender=None, config=None):
         apply_temperature_hint(recipient)
         while True:
@@ -639,13 +701,23 @@ def make_resilient_reply(endpoint_resolver, should_stop=None, wait=None, logger=
                 if outcome is None:
                     return True, None  # stopped by the user: end the conversation now
                 final, reply = outcome
+                malformed[0] = 0
                 reply = tool_calls_to_blocks(reply)
                 if reply is None or (isinstance(reply, str) and not reply.strip()):
                     # An empty answer (e.g. all tokens spent reasoning) would end the chat.
                     reply = "(The reply contained no answer text.)"
                 return final, reply
             except Exception as exc:
-                if not is_endpoint_outage(exc):
+                if is_malformed_reply(exc):
+                    # The server answered with an error body instead of a reply (e.g. the
+                    # model process failed mid-request). Retry a few times, then report.
+                    malformed[0] += 1
+                    NodeLog.emit("MALFORMED_REPLY", {"error": repr(exc)[:300], "count": malformed[0]})
+                    if malformed[0] >= 3:
+                        raise RuntimeError("The model server returned an error instead of a reply 3 times in a "
+                                           "row; check the model server's log (for Colab: the bridge cell "
+                                           "output lines starting with '!!! bridge error').") from exc
+                elif not is_endpoint_outage(exc):
                     raise
                 NodeLog.emit("ENDPOINT_OUTAGE", {"error": repr(exc)[:300]})
                 model = recipient.llm_config["config_list"][0].get("model", "")

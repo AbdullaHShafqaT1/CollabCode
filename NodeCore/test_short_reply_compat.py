@@ -1,5 +1,6 @@
 """Compatibility with endpoints that cap replies, drop system/history or go offline."""
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -408,7 +409,7 @@ def test_reasoning_models_keep_room_to_think():
         def generate_oai_reply(self, *a):
             return True, self.llm_config["max_tokens"]
 
-    assert make_resilient_reply(lambda: "http://x")(Agent(), [], None, None) == (True, 4096)
+    assert make_resilient_reply(lambda: "http://x")(Agent(), [], None, None) == (True, 6144)
 
 
 def test_native_tool_call_becomes_a_shell_block():
@@ -582,3 +583,194 @@ def test_fault_localisation_targets_the_buggy_function(tmp_path):
     for _ in range(2):
         w10.process("No code this time.")
     assert w10.resample["target"] == "ChessGame.make_move"
+
+
+def test_failed_acceptance_check_drives_repair_at_the_file_in_its_traceback(tmp_path):
+    for name, text in {"app_logic.py": "def add(a, b):\n    return a + b\n",
+                       "app_gui.py": "import app_logic\n\ndef build():\n    raise AttributeError('no widget')\n",
+                       "main.py": "import app_gui\n", "RunningGUIDE.txt": "guide " * 80,
+                       "test_app.py": "import unittest\nfrom app_logic import add\n"
+                                      "class T(unittest.TestCase):\n    def test_add(self):\n"
+                                      "        self.assertEqual(add(1, 2), 3)\n"}.items():
+        (tmp_path / name).write_text(text)
+    task = "CLI app with app_logic.py, app_gui.py, main.py, test_app.py and RunningGUIDE.txt"
+    acceptance = {"checks": [{"requirement": "The GUI builds",
+                              "command": f'"{sys.executable}" -c "import app_gui; app_gui.build()"'}]}
+    w = TaskWorkflow(tmp_path, task, detect_project_profile(task), max_rounds=10, acceptance=acceptance)
+    w.phase = 5
+    reply = w.process("TASK_COMPLETE")
+    assert "Acceptance check failed: The GUI builds" in reply
+    assert "these independent acceptance checks fail: The GUI builds" in reply and "Fix app_gui.py" in reply
+
+
+def ludo_sources():
+    return {p.name[:-len(".fixture")]: p.read_text() for p in LUDO.glob("*.fixture") if not p.name.startswith("test_")}
+
+
+def test_code_map_flags_nested_helper_called_as_method():
+    from node_core import codemap
+    text = codemap.render(codemap.build(ludo_sources()))
+    assert "STRUCTURAL PROBLEMS FOUND" in text
+    assert "has no method highlight_valid_tokens (only defined NESTED as LudoGUI.draw_tokens.highlight_valid_tokens)" in text
+    assert "self.title()" not in text  # inherited from tk.Tk: not a false alarm
+    assert len(text) < sum(len(v) for v in ludo_sources().values()) / 3
+
+
+def test_code_map_is_quiet_on_clean_code_and_serves_functions_by_name():
+    from node_core import codemap
+    run14 = {k: v for k, v in run14_sources().items() if not k.startswith("test_")}
+    assert "STRUCTURAL PROBLEMS" not in codemap.render(codemap.build(run14))
+    body = codemap.source_of(run14, "chess_logic.py::ChessGame.is_in_check")
+    assert body.startswith("FUNCTION chess_logic.py::ChessGame.is_in_check") and "def is_in_check" in body
+    assert codemap.source_of(run14, "is_in_check") and codemap.source_of(run14, "no_such_function") is None
+
+
+def test_repairs_on_larger_projects_get_a_map_and_read_by_name_works(tmp_path):
+    for name, text in ludo_sources().items():
+        (tmp_path / name).write_text(text)
+    (tmp_path / "test_ludo.py").write_text((LUDO / "test_ludo.py.fixture").read_text())
+    (tmp_path / "main.py").write_text("from ludo_gui import LudoGUI\n")
+    w = TaskWorkflow(tmp_path, LUDO_TASK, detect_project_profile(LUDO_TASK), max_rounds=20)
+    w.phase = 4
+    mapped = w._map_context(["Traceback:\n  File \"x/ludo_gui.py\", line 250, in update_ui\nAttributeError"])
+    assert mapped.startswith("CODE MAP") and "FUNCTION ludo_gui.py::LudoGUI.update_ui" in mapped
+    reply = w.process("```read\nludo_logic.py::LudoGame._handle_capture\nno_such_function\n```")
+    assert "FUNCTION ludo_logic.py::LudoGame._handle_capture" in reply
+    assert "No function matches 'no_such_function'" in reply
+
+
+def test_failed_probe_requests_do_not_enable_compat_mode(monkeypatch):
+    from node_core import endpoint
+    monkeypatch.setattr(endpoint, "is_reachable", lambda url, timeout=15: True)
+
+    def down(*a, **k):
+        raise ConnectionRefusedError("model server down")
+    monkeypatch.setattr(endpoint, "_post", down)
+    profile = endpoint.probe_capabilities("http://x", "m", logger=lambda *a: None)
+    assert profile["compat"] is False and profile["honors_system"] is None
+
+
+def ludo_workspace(tmp_path):
+    for name, text in ludo_sources().items():
+        (tmp_path / name).write_text(text)
+    # Passing tests: ordinary repair rounds (as in the live Ludo run), not fresh rewrites.
+    (tmp_path / "test_ludo.py").write_text("import unittest\nimport ludo_logic\n"
+                                           "class T(unittest.TestCase):\n    def test_import(self):\n"
+                                           "        self.assertTrue(ludo_logic.LudoGame)\n")
+    (tmp_path / "main.py").write_text("from ludo_gui import LudoGUI\n")
+    w = TaskWorkflow(tmp_path, LUDO_TASK, detect_project_profile(LUDO_TASK), max_rounds=30)
+    w.phase = 4
+    return w
+
+
+def test_read_memory_keeps_small_reads_and_blocks_unchanged_large_rereads(tmp_path):
+    w = ludo_workspace(tmp_path)
+    w.process("```read\nludo_gui.py::LudoGUI.update_ui\n```")
+    reply = w.process("```bash\nsed -n '1,400p' ludo_logic.py\n```")
+    assert "CODE YOU HAVE ALREADY READ" in reply and "FUNCTION ludo_gui.py::LudoGUI.update_ui" in reply
+    reply = w.process("```bash\nsed -n '1,400p' ludo_logic.py\n```")  # same large file, unchanged
+    assert "NOT RE-READ: ludo_logic.py is unchanged" in reply
+    assert "STOP READING" in reply  # several replies in a row only read
+
+
+def test_edits_reset_the_reading_limit(tmp_path):
+    w = ludo_workspace(tmp_path)
+    for _ in range(2):
+        w.process("```bash\nls\n```")
+    assert w.read_only_rounds == 2
+    w.process(fence("ludo_logic.py", "def is_safe_square(self, track_pos):\n    return track_pos in SAFE_SQUARES"))
+    assert w.read_only_rounds == 0
+
+
+def test_error_body_instead_of_reply_is_retried_then_reported():
+    class Agent:
+        llm_config = {"config_list": [{"model": "m", "base_url": "http://x/v1", "api_key": "k"}]}
+        calls = 0
+
+        def generate_oai_reply(self, *a):
+            Agent.calls += 1
+            if Agent.calls == 1:
+                raise TypeError("'NoneType' object is not iterable")
+            return True, "fixed"
+
+    waits = []
+    reply = make_resilient_reply(lambda: "http://x", wait=lambda *a, **k: waits.append(1) or "http://x",
+                                 logger=lambda *a: None)
+    assert reply(Agent(), [], None, None) == (True, "fixed") and waits == [1]
+
+    class Broken(Agent):
+        def generate_oai_reply(self, *a):
+            raise TypeError("'NoneType' object is not iterable")
+
+    broken = make_resilient_reply(lambda: "http://x", wait=lambda *a, **k: "http://x", logger=lambda *a: None)
+    with pytest.raises(RuntimeError, match="3 times in a row"):
+        broken(Broken(), [], None, None)
+
+
+def test_conversation_view_fits_the_model_context():
+    from node_core.agents import bounded_model_messages
+    from node_core.endpoint import prompt_budget_chars
+    budget = prompt_budget_chars(16384, 6144)
+    assert 25000 < budget < 31000  # (16384 - 6144 - 1000) tokens at ~3 chars per token
+    msgs = [{"role": "user", "content": "T" * 17000}, {"role": "assistant", "content": "a" * 800},
+            {"role": "user", "content": "F" * 14000}, {"role": "assistant", "content": "b" * 900},
+            {"role": "user", "content": "P" * 16000}]
+    view = bounded_model_messages(msgs, max_total_chars=budget)
+    assert sum(len(m["content"]) for m in view) <= budget
+    assert view[-1]["content"] == "P" * 16000 and view[0]["role"] == "user"
+    huge = [{"role": "user", "content": "H" * 1000 + "X" * 60000 + "NEXT RESPONSE"}]
+    trimmed = bounded_model_messages(huge, max_total_chars=budget)[0]["content"]
+    assert len(trimmed) <= budget and trimmed.endswith("NEXT RESPONSE") and trimmed.startswith("H" * 1000)
+
+
+def test_second_run_on_the_same_workspace_is_refused(tmp_path):
+    import os
+    import subprocess as sp
+    from node_core.core import acquire_workspace_lock
+    lock = tmp_path / ".cloudcode" / "run.lock"
+    other = sp.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        lock.parent.mkdir(parents=True)
+        lock.write_text(str(other.pid))           # a live run holds the workspace
+        with pytest.raises(RuntimeError, match="already using this workspace"):
+            acquire_workspace_lock(lock)
+    finally:
+        other.kill(); other.wait()
+    acquire_workspace_lock(lock)                  # stale lock (process gone) is replaced
+    assert lock.read_text() == str(os.getpid())
+
+
+def test_file_viewer_and_unknown_tool_calls_keep_the_conversation_going():
+    from node_core.agents import tool_calls_to_blocks
+    view = {"content": None, "tool_calls": [{"function": {"name": "repo_browser_open_file",
+            "arguments": '{"path":"ludo_logic.py","line_start":1,"line_end":400}'}}]}
+    assert tool_calls_to_blocks(view) == "```read\nludo_logic.py:1-400\n```"
+    search = {"content": "", "tool_calls": [{"function": {"name": "repo_browser_search", "arguments": '{"query":"def move"}'}}]}
+    assert "grep -rn 'def move' ." in tool_calls_to_blocks(search)
+    odd = {"content": None, "tool_calls": [{"function": {"name": "browser_search", "arguments": '{"q": 1}'}}]}
+    assert "unavailable tool(s): browser_search" in tool_calls_to_blocks(odd)
+
+
+def test_reading_is_paused_after_three_read_only_replies(tmp_path):
+    w = ludo_workspace(tmp_path)
+    w.process("```read\nludo_logic.py:1-40\n```")
+    for _ in range(2):
+        w.process("```bash\nls\n```")
+    reply = w.process("```read\nludo_logic.py:1-40\n```")    # a re-read after 3 read-only replies
+    assert "READING PAUSED" in reply
+    reply = w.process("```read\nmain.py\n```")               # a new file is still served
+    assert "FILE main.py" in reply or "main.py (current contents)" in reply
+
+
+def test_failing_acceptance_script_is_traced_into_the_repair_prompt(tmp_path):
+    w = ludo_workspace(tmp_path)
+    (tmp_path / ".cloudcode").mkdir(exist_ok=True)
+    (tmp_path / ".cloudcode" / "check_capture.py").write_text(
+        "import sys; sys.path.insert(0, '.')\nimport ludo_logic as L\n"
+        "g = L.LudoGame(2)\nassert g.is_safe_square(5), 'square 5 should be safe'\n")
+    w.checks = [{"requirement": "Square 5 is safe", "command": f"{sys.executable} .cloudcode/check_capture.py"}]
+    errors = w.verify(final=True)
+    observed = next(e for e in errors if e.startswith("Observed behaviour in failing acceptance check"))
+    assert "check_capture.py: AssertionError: square 5 should be safe" in observed
+    assert "LudoGame.is_safe_square(5) -> False" in observed
+    assert "FUNCTION ludo_logic.py::LudoGame.is_safe_square" in w._map_context(errors)

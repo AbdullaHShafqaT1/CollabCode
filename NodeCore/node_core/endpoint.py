@@ -38,6 +38,33 @@ def is_reachable(base_url: str, timeout: float = 15) -> bool:
         return False
 
 
+def model_limits(base_url: str, model: str, timeout: float = 20) -> Dict[str, Optional[int]]:
+    """Context window and reply cap the endpoint reports for `model` (None when unknown)."""
+    try:
+        with urllib.request.urlopen(_v1(base_url) + "/models", timeout=timeout) as res:
+            data = json.loads(res.read().decode("utf-8"))
+    except Exception:
+        return {"context_window": None, "max_output_tokens": None}
+    entries = data.get("data") or data.get("models") or []
+    entry = next((e for e in entries if e.get("id") == model), entries[0] if len(entries) == 1 else {})
+    as_int = lambda v: int(v) if isinstance(v, (int, float)) and v > 0 else None
+    return {"context_window": as_int(entry.get("context_window")),
+            "max_output_tokens": as_int(entry.get("max_output_tokens"))}
+
+
+def prompt_budget_chars(context_window: Optional[int], reply_tokens: Optional[int],
+                        chars_per_token: float = 3.0, reserve_tokens: int = 1000) -> Optional[int]:
+    """Characters of conversation that fit in the context after reserving the reply.
+
+    3 characters per token is a conservative estimate for code-heavy prompts;
+    `reserve_tokens` covers the system prompt and chat-template overhead.
+    """
+    if not context_window:
+        return None
+    reply = min(reply_tokens or context_window // 3, context_window // 2)
+    return max(4000, int((context_window - reply - reserve_tokens) * chars_per_token))
+
+
 def probe_capabilities(base_url: str, model: str, timeout: float = 90,
                        logger: Callable[[str], None] = print) -> Dict[str, object]:
     """Measure whether the endpoint honours system messages, history and max_tokens.
@@ -71,10 +98,16 @@ def probe_capabilities(base_url: str, model: str, timeout: float = 90,
         try:
             reply = _post(base_url, {"model": model, "temperature": 0, **body}, timeout)
             profile[key] = bool(check(_content(reply)))
-        except Exception as exc:  # a failed probe is treated as a missing capability
-            profile[key] = False
+        except Exception as exc:
+            # A failed request says nothing about the capability (the model
+            # server may simply be down); record it as unknown, not missing.
+            profile[key] = None
             profile[key + "_error"] = repr(exc)[:200]
-    profile["compat"] = not all(profile[k] for k in probes)
+    unknown = [k for k in probes if profile[k] is None]
+    if unknown:
+        logger("[!] Endpoint probe requests failed for " + ", ".join(unknown) +
+               "; treating them as unknown (not unsupported). Check that the model server is running.")
+    profile["compat"] = any(profile[k] is False for k in probes)
     logger("[*] Endpoint capabilities: " + ", ".join(f"{k}={profile[k]}" for k in probes) +
            (" -> COMPATIBILITY MODE (folded rules, method-at-a-time files)" if profile["compat"] else ""))
     return profile

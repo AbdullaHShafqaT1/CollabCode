@@ -119,8 +119,10 @@ def tests_of(suite):
             yield item
 
 
-def trace(test, workspace, test_file):
-    """Record test -> project calls and one level of project -> project calls."""
+def trace(test, workspace, test_file, runner=None):
+    """Record test -> project calls and one level of project -> project calls.
+
+    `runner` replaces running a unittest case (used to trace a check script)."""
     calls, pending = [], {}
 
     def profiler(frame, event, arg):
@@ -162,7 +164,7 @@ def trace(test, workspace, test_file):
     result = unittest.TestResult()
     sys.setprofile(profiler)
     try:
-        test.run(result)
+        runner() if runner else test.run(result)
     finally:
         sys.setprofile(None)
     for depth, text, slot in pending.values():
@@ -209,7 +211,40 @@ def suspiciousness(runs):
     return sorted(scores, key=lambda item: (-item[0], item[1]))
 
 
+def trace_script(workspace, script):
+    """Run an acceptance-check script under the tracer; report its failure and calls."""
+    import runpy
+    import traceback
+    script = os.path.realpath(script)
+    outcome = {}
+
+    def run():
+        try:
+            runpy.run_path(script, run_name="__main__")
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                outcome["error"] = f"exit status {exc.code}"
+        except BaseException as exc:  # the check's own assertion or a crash in project code
+            outcome["error"] = "".join(traceback.format_exception_only(type(exc), exc)).strip()
+
+    calls = trace(None, workspace, script, runner=run)
+    if "error" not in outcome:
+        return ""
+    head = f"{os.path.basename(script)}: {outcome['error'].splitlines()[0][:300]}"
+    return "\n".join([head] + ["    " + c for c in calls[-MAX_CALLS:]]
+                     or [head, "    (no calls into project code were recorded)"])
+
+
 def main():
+    if len(sys.argv) > 3 and sys.argv[2] == "--script":
+        workspace = os.path.realpath(sys.argv[1])
+        os.chdir(workspace)
+        sys.path.insert(0, workspace)
+        sys.stdout = io.StringIO()
+        report = trace_script(workspace, sys.argv[3])
+        sys.stdout = sys.__stdout__
+        print(report)
+        return
     workspace, module = os.path.realpath(sys.argv[1]), sys.argv[2]
     os.chdir(workspace)
     sys.path.insert(0, workspace)

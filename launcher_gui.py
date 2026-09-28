@@ -418,6 +418,17 @@ def run_autonomous_orchestrator(
     if compat is None:
         from node_core.endpoint import probe_capabilities
         compat = bool(probe_capabilities(base_url, model, logger=logger).get("compat"))
+    # Fit every request inside the model's context: the reply budget plus the prompt.
+    from node_core.endpoint import model_limits, prompt_budget_chars
+    limits = model_limits(base_url, model)
+    if limits.get("max_output_tokens"):
+        for entry in llm_config.get("config_list", []):
+            entry["max_tokens"] = min(entry.get("max_tokens") or limits["max_output_tokens"], limits["max_output_tokens"])
+        llm_config["max_tokens"] = min(llm_config.get("max_tokens") or limits["max_output_tokens"], limits["max_output_tokens"])
+    budget = prompt_budget_chars(limits.get("context_window"), llm_config.get("max_tokens"))
+    if budget:
+        logger(f"[*] Model context {limits['context_window']} tokens, reply budget {llm_config.get('max_tokens')}: "
+               f"prompts kept under ~{budget} characters")
     config_url_at_start = load_config().get("tunnel_url")
 
     def resolve_endpoint() -> str:
@@ -438,7 +449,8 @@ def run_autonomous_orchestrator(
         }]}
     result = orchestrator.start_task(task_prompt, max_rounds=max_rounds,
                                      should_stop=should_stop, acceptance=acceptance,
-                                     compat=compat, endpoint_resolver=resolve_endpoint, resume=resume)
+                                     compat=compat, endpoint_resolver=resolve_endpoint, resume=resume,
+                                     prompt_budget_chars=budget)
     logger(f"\n[*] Execution Finished. Result: {result.get('status')}")
     return result
 
