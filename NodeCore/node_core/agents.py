@@ -448,7 +448,8 @@ def bounded_model_messages(messages, max_history_chars=36000):
     return [messages[0], *reversed(recent), messages[-1]]
 
 
-def create_coder_agent(llm_config: Dict[str, Any]) -> ConversableAgent:
+def create_coder_agent(llm_config: Dict[str, Any], fold_system: bool = False,
+                       endpoint_resolver=None, should_stop=None) -> ConversableAgent:
     """Streamlined autonomous coder agent tailored for Qwen-Coder and dual-agent runner."""
     agent = ConversableAgent(
         name="CoderAgent",
@@ -480,15 +481,154 @@ STRICT OPERATIONAL RULES & NEGATIVE CONSTRAINTS:
    - Use required installed libraries and their actual APIs; do not replace task-required libraries with hand-written implementations.
    - DO NOT run GUI mainloops in test files or bash blocks, as GUI event loops block the non-interactive runner. Test game logic headlessly.
 
-6. TERMINATION:
+6. NO TOOLS:
+   - You have no tool or function-calling ability. To run a command, write a ```bash block; to read a file,
+     write a ```read block with its path. The runner executes these and returns the output.
+
+7. TERMINATION:
    - PHASE_COMPLETE and ITERATION_COMPLETE are local progress signals.
    - TASK_COMPLETE or legacy TERMINATE requests verification, never ends an incomplete task.
    - Follow the runner's remaining requirements until it confirms completion.
 """,
         llm_config=llm_config,
     )
-    agent.register_hook("process_all_messages_before_reply", bounded_model_messages)
+    rules = agent.system_message
+    if fold_system:
+        # Endpoints that forward only the last user message never see the
+        # system prompt; repeat the rules where the model can read them.
+        agent.register_hook("process_all_messages_before_reply",
+                            lambda messages: fold_rules_into_last(bounded_model_messages(messages), rules))
+    else:
+        agent.register_hook("process_all_messages_before_reply", bounded_model_messages)
+    if endpoint_resolver is not None:
+        agent.register_reply([ConversableAgent, None], make_resilient_reply(endpoint_resolver, should_stop),
+                             position=0)
     return agent
+
+
+def fold_rules_into_last(messages, rules):
+    """Return messages whose final entry carries the agent rules inline."""
+    if not messages or not rules:
+        return messages
+    last = dict(messages[-1])
+    last["content"] = ("OPERATING RULES (always apply):\n" + rules.strip() + "\n\n" +
+                       "=" * 60 + "\n" + str(last.get("content") or ""))
+    return [*messages[:-1], last]
+
+
+REASONING_MODELS = ("gpt-oss", "deepseek-r1", "qwq", "qwen3", "magistral", "phi4-reasoning")
+
+
+def tool_calls_to_blocks(reply):
+    """Turn a native tool call into the code block the runner understands.
+
+    Models trained with built-in tools (gpt-oss: container.exec / python) may
+    call a tool that was never offered, returning no text. An empty reply ends
+    the conversation, so express the call as a ```bash block instead.
+    """
+    import json as _json
+    import shlex as _shlex
+    get = (lambda o, k: o.get(k)) if isinstance(reply, dict) else (lambda o, k: getattr(o, k, None))
+    calls = get(reply, "tool_calls") if reply is not None and not isinstance(reply, str) else None
+    if not calls or (get(reply, "content") or "").strip():
+        return reply
+    blocks = []
+    for call in calls:
+        fn = get(call, "function") or {}
+        fget = (lambda k: fn.get(k)) if isinstance(fn, dict) else (lambda k: getattr(fn, k, None))
+        try:
+            args = _json.loads(fget("arguments") or "{}")
+        except ValueError:
+            args = {"input": fget("arguments") or ""}
+        cmd = args.get("cmd") or args.get("command") or args.get("input")
+        code = args.get("code")
+        if isinstance(cmd, list):
+            cmd = cmd[2] if len(cmd) >= 3 and cmd[0] in ("bash", "sh") and cmd[1] in ("-c", "-lc") else _shlex.join(cmd)
+        if code and not cmd:
+            cmd = "python - <<'PYEOF'\n" + str(code) + "\nPYEOF"
+        if cmd:
+            blocks.append("```bash\n" + str(cmd).strip() + "\n```")
+    if not blocks:
+        return reply
+    NodeLog.emit("TOOL_CALL_CONVERTED", {"calls": len(calls)})
+    return "\n\n".join(blocks)
+
+
+def is_endpoint_outage(exc) -> bool:
+    """Transport failures worth waiting out (tunnel down, gateway errors, timeouts)."""
+    try:
+        import openai
+    except ImportError:  # pragma: no cover
+        return False
+    # autogen re-raises openai timeouts as the built-in TimeoutError.
+    if isinstance(exc, (openai.APIConnectionError, openai.APITimeoutError, TimeoutError)):
+        return True
+    return isinstance(exc, openai.APIStatusError) and getattr(exc, "status_code", 0) in {502, 503, 504, 520, 521,
+                                                                                          522, 523, 524, 530}
+
+
+def make_resilient_reply(endpoint_resolver, should_stop=None, wait=None, logger=None):
+    """Wrap the default LLM reply so an endpoint outage pauses instead of failing.
+
+    ``endpoint_resolver`` returns the current base URL (re-read from config);
+    a changed URL rebuilds the agent's client in place.
+    """
+    from node_core.endpoint import wait_for_endpoint
+    wait = wait or wait_for_endpoint
+    logger = logger or safe_console_print
+
+    def apply_temperature_hint(recipient):
+        workflow = getattr(recipient, "workflow_ref", None)
+        if workflow is None:
+            return
+        cfg = recipient.llm_config
+        base = cfg.setdefault("_base_temperature", cfg.get("temperature", 0.2))
+        base_tokens = cfg.setdefault("_base_max_tokens", cfg.get("max_tokens"))
+        wanted = getattr(workflow, "temperature_hint", None) or base
+        wanted_tokens = getattr(workflow, "max_tokens_hint", None) or base_tokens
+        model = str((cfg.get("config_list") or [{}])[0].get("model", "")).lower()
+        if wanted_tokens and any(tag in model for tag in REASONING_MODELS):
+            # Reasoning models spend part of max_tokens thinking before they answer.
+            wanted_tokens = max(wanted_tokens, 4096)
+        if cfg.get("temperature") != wanted or cfg.get("max_tokens") != wanted_tokens:
+            from autogen import OpenAIWrapper
+            cfg["temperature"] = wanted
+            if wanted_tokens is not None:
+                cfg["max_tokens"] = wanted_tokens
+                for entry in cfg.get("config_list", []):
+                    entry["max_tokens"] = wanted_tokens
+            recipient.client = OpenAIWrapper(**{k: v for k, v in cfg.items() if not k.startswith("_")})
+            NodeLog.emit("SAMPLING_CHANGED", {"temperature": wanted, "max_tokens": wanted_tokens})
+
+    def resilient_reply(recipient, messages=None, sender=None, config=None):
+        apply_temperature_hint(recipient)
+        while True:
+            try:
+                final, reply = recipient.generate_oai_reply(messages, sender, config)
+                reply = tool_calls_to_blocks(reply)
+                if reply is None or (isinstance(reply, str) and not reply.strip()):
+                    # An empty answer (e.g. all tokens spent reasoning) would end the chat.
+                    reply = "(The reply contained no answer text.)"
+                return final, reply
+            except Exception as exc:
+                if not is_endpoint_outage(exc):
+                    raise
+                NodeLog.emit("ENDPOINT_OUTAGE", {"error": repr(exc)[:300]})
+                model = recipient.llm_config["config_list"][0].get("model", "")
+                url = wait(endpoint_resolver, model, should_stop=should_stop, logger=logger)
+                if url is None:
+                    raise
+                current = recipient.llm_config["config_list"][0].get("base_url", "").rstrip("/")
+                new_base = url.rstrip("/") if url.rstrip("/").endswith("/v1") else url.rstrip("/") + "/v1"
+                if new_base != current:
+                    from autogen import OpenAIWrapper
+                    for entry in recipient.llm_config["config_list"]:
+                        entry["base_url"] = new_base
+                    recipient.client = OpenAIWrapper(**{k: v for k, v in recipient.llm_config.items()
+                                                        if not k.startswith("_")})
+                    NodeLog.emit("ENDPOINT_SWITCHED", {"base_url": new_base})
+                    config = None
+    return resilient_reply
 
 
 def create_user_proxy_runner(
@@ -498,12 +638,15 @@ def create_user_proxy_runner(
     task_prompt: str = "",
     acceptance: Optional[Dict[str, Any]] = None,
     should_stop=None,
+    incremental: bool = False,
+    resume: bool = False,
 ) -> UserProxyAgent:
     """Keep AutoGen transport while delegating phase evidence to TaskWorkflow."""
     from node_core.workflow import TaskWorkflow
     workflow = TaskWorkflow(workspace_path or ".", task_prompt,
                             detect_project_profile(task_prompt), max_rounds,
-                            acceptance=acceptance, should_stop=should_stop)
+                            acceptance=acceptance, should_stop=should_stop,
+                            incremental=incremental, resume=resume)
     user_proxy = UserProxyAgent(
         name=name, human_input_mode="NEVER", max_consecutive_auto_reply=max_rounds,
         is_termination_msg=lambda message: False, code_execution_config=False,

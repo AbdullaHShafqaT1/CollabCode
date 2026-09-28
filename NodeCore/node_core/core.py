@@ -55,7 +55,8 @@ def create_cloud_llm_config(
             }
         ],
         "temperature": 0.2,
-        "timeout": 120,
+        # Long replies from a slow GPU (e.g. a 14B model on a Colab T4) take minutes.
+        "timeout": 600,
         "max_tokens": 16384,
     }
 
@@ -468,10 +469,20 @@ class NodeCore:
 
     def start_task(self, task_prompt: str, max_rounds: int = 30,
                    acceptance: Optional[Dict[str, Any]] = None,
-                   should_stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
-        """Keep setup failures as reviewable outcomes, like execution failures."""
+                   should_stop: Optional[Callable[[], bool]] = None,
+                   compat: bool = False, endpoint_resolver: Optional[Callable[[], str]] = None,
+                   resume: bool = False) -> Dict[str, Any]:
+        """Keep setup failures as reviewable outcomes, like execution failures.
+
+        compat: the endpoint drops system/history or caps replies; fold rules
+        into each prompt and build large files one method at a time.
+        endpoint_resolver: returns the current endpoint URL; enables waiting out
+        outages (and switching to a new URL) instead of failing the run.
+        resume: continue from the workspace's saved workflow state.
+        """
         try:
-            return self._start_task(task_prompt, max_rounds, acceptance, should_stop)
+            return self._start_task(task_prompt, max_rounds, acceptance, should_stop,
+                                    compat=compat, endpoint_resolver=endpoint_resolver, resume=resume)
         except Exception as exc:
             self.status = "FAILED"
             report = {"status": "FAILED", "termination_reason": str(exc), "original_task": task_prompt,
@@ -490,7 +501,9 @@ class NodeCore:
 
     def _start_task(self, task_prompt: str, max_rounds: int = 30,
                    acceptance: Optional[Dict[str, Any]] = None,
-                   should_stop: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
+                   should_stop: Optional[Callable[[], bool]] = None,
+                   compat: bool = False, endpoint_resolver: Optional[Callable[[], str]] = None,
+                   resume: bool = False) -> Dict[str, Any]:
         """
         Execute the CoderAgent/UserProxyRunner conversation with explicit evidence.
         max_rounds counts model responses including local processing of the last
@@ -511,11 +524,28 @@ class NodeCore:
             self.tools = configure_tools(self.workspace_root)
 
         # One configured round permits one coder response and its local processing.
+        # Optional behaviours are passed only when enabled so the default call
+        # signatures (and existing substitutes of these factories) are unchanged.
+        proxy_options = {k: v for k, v in (("incremental", compat), ("resume", resume)) if v}
         user_proxy = create_user_proxy_runner("UserProxyRunner", workspace_path=self.workspace_root,
                                               max_rounds=max_rounds, task_prompt=task_prompt,
-                                              acceptance=acceptance, should_stop=should_stop)
+                                              acceptance=acceptance, should_stop=should_stop, **proxy_options)
         workflow = user_proxy.workflow
-        coder = create_coder_agent(self.llm_config)
+        coder_options = {}
+        if compat:
+            coder_options["fold_system"] = True
+        if endpoint_resolver is not None:
+            coder_options.update(endpoint_resolver=endpoint_resolver, should_stop=should_stop)
+        if coder_options:
+            import inspect
+            try:
+                accepted = inspect.signature(create_coder_agent).parameters
+                if not any(p.kind == p.VAR_KEYWORD for p in accepted.values()):
+                    coder_options = {k: v for k, v in coder_options.items() if k in accepted}
+            except (TypeError, ValueError):
+                pass
+        coder = create_coder_agent(self.llm_config, **coder_options)
+        coder.workflow_ref = workflow  # lets the reply wrapper follow the workflow's temperature hint
         coder.human_input_mode = "NEVER"
         coder.update_max_consecutive_auto_reply(max_rounds)
 
@@ -543,7 +573,9 @@ class NodeCore:
         coder.send = logged_coder_send
 
         # 3. Initiate Autonomous Coder <-> UserProxy Conversation with Phased Prompt
-        phased_prompt = prepare_phased_task_prompt(task_prompt) + "\n\n" + workflow.context()
+        phased_prompt = workflow.initial_prompt() if hasattr(workflow, "initial_prompt") else None
+        if phased_prompt is None:
+            phased_prompt = prepare_phased_task_prompt(task_prompt) + "\n\n" + workflow.context()
         messages = []
         try:
             if should_stop and should_stop():

@@ -1,0 +1,246 @@
+import json
+from copy import deepcopy
+from typing import List, Tuple, Optional
+
+class ChessGame:
+    """
+    Core chess logic engine.
+    Board representation: 8x8 list of lists.
+    Each cell contains None or a piece string like 'wP', 'bK', etc.
+    """
+
+    # Piece Unicode mapping (used by GUI)
+    UNICODE_PIECES = {
+        'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+        'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
+    }
+
+    def __init__(self):
+        self.board: List[List[Optional[str]]] = [[None for _ in range(8)] for _ in range(8)]
+        self.current_turn: str = 'W'  # 'W' for White, 'B' for Black
+        self._setup_initial_position()
+
+    def _setup_initial_position(self):
+        # Black major pieces
+        self.board[0] = ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR']
+        # Black pawns
+        self.board[1] = ['bP'] * 8
+        # Empty middle
+        for r in range(2, 6):
+            self.board[r] = [None] * 8
+        # White pawns
+        self.board[6] = ['wP'] * 8
+        # White major pieces
+        self.board[7] = ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+
+    @staticmethod
+    def _in_bounds(r: int, c: int) -> bool:
+        return 0 <= r < 8 and 0 <= c < 8
+
+    @staticmethod
+    def _piece_color(piece: str) -> str:
+        return 'W' if piece[0] == 'w' else 'B'
+
+    @staticmethod
+    def _opponent_color(color: str) -> str:
+        return 'B' if color == 'W' else 'W'
+
+    def get_piece(self, row: int, col: int) -> Optional[str]:
+        """
+        Retrieve the piece located at the specified board coordinates.
+
+        Parameters
+        ----------
+        row : int
+            Zero‑based rank index (0 is the top of the board from Black's perspective).
+        col : int
+            Zero‑based file index (0 is the leftmost file from White's perspective).
+
+        Returns
+        -------
+        Optional[str]
+            The piece identifier (e.g., 'wP', 'bK') if a piece occupies the square,
+            otherwise ``None``.
+        """
+        if 0 <= row < 8 and 0 <= col < 8:
+            return self.board[row][col]
+        return None
+
+    def get_legal_moves(self, row: int, col: int) -> List[Tuple[int, int]]:
+        piece = self.get_piece(row, col)
+        if piece is None:
+            return []
+        if self._piece_color(piece) != self.current_turn:
+            return []
+
+        moves = self._generate_moves(row, col, consider_check=True)
+        return moves
+
+    def _generate_moves(self, row: int, col: int, consider_check: bool = False) -> List[Tuple[int, int]]:
+        piece = self.get_piece(row, col)
+        if piece is None:
+            return []
+
+        color = self._piece_color(piece)
+        opponent = self._opponent_color(color)
+        piece_type = piece[1]
+        directions = []
+        moves = []
+
+        if piece_type == 'P':
+            # Pawn forward
+            dir_forward = -1 if color == 'W' else 1
+            start_row = 6 if color == 'W' else 1
+            # One step forward
+            r1, c1 = row + dir_forward, col
+            if self._in_bounds(r1, c1) and self.board[r1][c1] is None:
+                moves.append((r1, c1))
+                # Two steps from starting position
+                r2 = r1 + dir_forward
+                if row == start_row and self._in_bounds(r2, c1) and self.board[r2][c1] is None:
+                    moves.append((r2, c1))
+            # Captures
+            for dc in (-1, 1):
+                r_cap, c_cap = row + dir_forward, col + dc
+                if self._in_bounds(r_cap, c_cap):
+                    target = self.board[r_cap][c_cap]
+                    if target is not None and self._piece_color(target) == opponent:
+                        moves.append((r_cap, c_cap))
+        elif piece_type == 'N':
+            for dr, dc in [(-2, -1), (-2, 1), (-1, -2), (-1, 2),
+                           (1, -2), (1, 2), (2, -1), (2, 1)]:
+                r, c = row + dr, col + dc
+                if self._in_bounds(r, c):
+                    target = self.board[r][c]
+                    if target is None or self._piece_color(target) == opponent:
+                        moves.append((r, c))
+        elif piece_type == 'B':
+            directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        elif piece_type == 'R':
+            directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        elif piece_type == 'Q':
+            directions = [(-1, -1), (-1, 1), (1, -1), (1, 1),
+                          (-1, 0), (1, 0), (0, -1), (0, 1)]
+        elif piece_type == 'K':
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    r, c = row + dr, col + dc
+                    if self._in_bounds(r, c):
+                        target = self.board[r][c]
+                        if target is None or self._piece_color(target) == opponent:
+                            moves.append((r, c))
+        # Sliding pieces
+        if directions:
+            for dr, dc in directions:
+                r, c = row + dr, col + dc
+                while self._in_bounds(r, c):
+                    target = self.board[r][c]
+                    if target is None:
+                        moves.append((r, c))
+                    else:
+                        if self._piece_color(target) == opponent:
+                            moves.append((r, c))
+                        break
+                    r += dr
+                    c += dc
+
+        if consider_check:
+            # Filter out moves that leave own king in check
+            legal_moves = []
+            for r, c in moves:
+                if not self._move_leaves_king_in_check(row, col, r, c):
+                    legal_moves.append((r, c))
+            return legal_moves
+        return moves
+
+    def _move_leaves_king_in_check(self, from_r: int, from_c: int, to_r: int, to_c: int) -> bool:
+        """
+        Return True if moving a piece from (from_r, from_c) to (to_r, to_c)
+        would leave the moving side's king in check.
+        """
+        # Simulate move on a copy
+        board_copy = deepcopy(self.board)
+        piece = board_copy[from_r][from_c]
+        board_copy[to_r][to_c] = piece
+        board_copy[from_r][from_c] = None
+        # Check if king of moving color is in check on this board
+        return self._is_in_check_on_board(board_copy, self._piece_color(piece))
+
+    def _is_in_check_on_board(self, board: List[List[Optional[str]]], color: str) -> bool:
+        """
+        Determine if the king of the given color is in check on the provided board.
+        """
+        # Temporarily replace board
+        old_board = self.board
+        self.board = board
+        result = self.is_in_check(color)
+        self.board = old_board
+        return result
+
+    def make_move(self, from_pos: Tuple[int, int], to_pos: Tuple[int, int]) -> bool:
+        """
+        Execute a move if legal. Switch turns upon success.
+        Returns True if move executed, False otherwise.
+        """
+        fr, fc = from_pos
+        tr, tc = to_pos
+        if (tr, tc) in self.get_legal_moves(fr, fc):
+            piece = self.board[fr][fc]
+            self.board[tr][tc] = piece
+            self.board[fr][fc] = None
+            self.current_turn = self._opponent_color(self.current_turn)
+            return True
+        return False
+
+    def _find_king(self, color: str) -> Optional[Tuple[int, int]]:
+        """
+        Locate the king of the specified color. Returns (row, col) or None if not found.
+        """
+        target = ('wK' if color == 'W' else 'bK')
+        for r in range(8):
+            for c in range(8):
+                if self.board[r][c] == target:
+                    return (r, c)
+        return None
+
+    def is_in_check(self, color: str) -> bool:
+        """
+        Return True if the king of the given color is under attack.
+        """
+        king_pos = self._find_king(color)
+        if king_pos is None:
+            return False  # Should not happen in normal play
+        kr, kc = king_pos
+        opponent = self._opponent_color(color)
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if piece is None or self._piece_color(piece) != opponent:
+                    continue
+                # Generate moves without considering check
+                moves = self._generate_moves(r, c, consider_check=False)
+                if (kr, kc) in moves:
+                    return True
+        return False
+
+    def save_game(self, filepath: str) -> None:
+        """
+        Serialize the current game state to a JSON file.
+        """
+        data = {
+            'board': self.board,
+            'current_turn': self.current_turn
+        }
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+
+    def load_game(self, filepath: str) -> None:
+        """
+        Load a game state from a JSON file.
+        """
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        self.board = data['board']
+        self.current_turn = data['current_turn']

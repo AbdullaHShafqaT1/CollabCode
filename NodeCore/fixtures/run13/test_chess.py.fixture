@@ -1,0 +1,97 @@
+import unittest
+import tempfile
+import os
+import json
+from chess_logic import ChessGame
+
+class TestChessLogic(unittest.TestCase):
+    def setUp(self):
+        self.game = ChessGame()
+
+    def test_initial_layout(self):
+        """Verify that the starting board contains 32 pieces in correct positions."""
+        piece_counts = {
+            'bR': 0, 'bN': 0, 'bB': 0, 'bQ': 0, 'bK': 0,
+            'bP': 0, 'wR': 0, 'wN': 0, 'wB': 0, 'wQ': 0, 'wK': 0, 'wP': 0
+        }
+        for r in range(8):
+            for c in range(8):
+                piece = self.game.get_piece(r, c)
+                if piece is not None:
+                    piece_counts[piece] += 1
+        for p, count in piece_counts.items():
+            with self.subTest(piece=p):
+                self.assertEqual(count, 8 if p.endswith('P') else 2 if p[-1] != 'K' else 1,
+                                 msg=f"Count mismatch for {p}")
+
+        # Check specific squares
+        self.assertEqual(self.game.get_piece(0, 0), 'bR')
+        self.assertEqual(self.game.get_piece(1, 4), 'bP')
+        self.assertEqual(self.game.get_piece(6, 4), 'wP')
+        self.assertEqual(self.game.get_piece(7, 3), 'wQ')
+        self.assertEqual(self.game.get_piece(7, 4), 'wK')
+
+    def test_pawn_opening_move(self):
+        """White pawn moves two squares forward from starting position."""
+        self.assertTrue(self.game.make_move((6, 0), (4, 0)))
+        self.assertIsNone(self.game.get_piece(6, 0))
+        self.assertEqual(self.game.get_piece(4, 0), 'wP')
+        self.assertEqual(self.game.current_turn, 'B')
+
+    def test_knight_leap_over_pawn(self):
+        """Knight should be able to leap over pawns."""
+        # Move white pawn forward to clear square
+        self.game.make_move((6, 1), (4, 1))
+        # Knight at b1 (7,1) attempts to move to c3 (5,2)
+        self.assertTrue(self.game.make_move((7, 1), (5, 2)))
+        self.assertIsNone(self.game.get_piece(7, 1))
+        self.assertEqual(self.game.get_piece(5, 2), 'wN')
+        self.assertEqual(self.game.current_turn, 'B')
+
+    def test_turn_alternation(self):
+        """Ensure turns alternate correctly after moves."""
+        # White pawn
+        self.assertTrue(self.game.make_move((6, 3), (4, 3)))
+        self.assertEqual(self.game.current_turn, 'B')
+        # Black pawn
+        self.assertTrue(self.game.make_move((1, 4), (3, 4)))
+        self.assertEqual(self.game.current_turn, 'W')
+        # White queen
+        self.assertTrue(self.game.make_move((7, 3), (5, 5)))
+        self.assertEqual(self.game.current_turn, 'B')
+
+    def test_simple_check_detection(self):
+        """Set up a simple check: white queen on h5 checking black king."""
+        # Move white queen to h5
+        self.game.make_move((7, 3), (5, 7))  # Qh5
+        # Move black pieces away
+        self.game.make_move((1, 0), (2, 0))
+        self.game.make_move((6, 0), (5, 0))
+        # Now black king should be in check from queen
+        self.assertTrue(self.game.is_in_check('B'))
+        self.assertFalse(self.game.is_in_check('W'))
+
+    def test_json_save_and_load(self):
+        """Verify that game state can be saved to and loaded from JSON."""
+        # Perform some moves
+        self.game.make_move((6, 4), (4, 4))  # e2-e4
+        self.game.make_move((1, 4), (3, 4))  # e7-e5
+        self.game.make_move((7, 3), (5, 5))  # Qe1-f4
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.json') as tmp:
+            tmp_path = tmp.name
+        try:
+            # Save current game
+            self.game.save_game(tmp_path)
+            # Load into new instance
+            loaded_game = ChessGame()
+            loaded_game.load_game(tmp_path)
+
+            # Compare board and turn
+            self.assertEqual(loaded_game.current_turn, self.game.current_turn)
+            self.assertEqual(loaded_game.board, self.game.board)
+        finally:
+            os.remove(tmp_path)
+
+if __name__ == '__main__':
+    unittest.main()

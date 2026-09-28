@@ -18,6 +18,10 @@ import tempfile
 from pathlib import Path
 
 from node_core.tools import NodeForge, NodeInsight, NodeLog, NodePulse
+from node_core import incremental as inc
+
+STATE_FILE = "state.json"  # resumable workflow state inside .cloudcode/
+PY_COMMANDS = {"read", "bash", "sh", "shell", "cmd", "powershell"}
 
 
 def command_output(result):
@@ -34,7 +38,7 @@ def python_command(*args):
 
 class TaskWorkflow:
     def __init__(self, workspace, task, profile, max_rounds=30, acceptance=None,
-                 stall_limit=4, should_stop=None):
+                 stall_limit=4, should_stop=None, incremental=False, resume=False):
         if isinstance(max_rounds, bool) or not isinstance(max_rounds, int) or max_rounds < 1:
             raise ValueError("max_rounds must be a positive integer")
         if stall_limit < 1:
@@ -69,6 +73,30 @@ class TaskWorkflow:
         # FIX 5: Track whether stall recovery has been attempted
         self._recovery_attempted = False
         self.recovery_evidence = []
+        # Output-limit continuation: endpoints that cap each reply (and forget
+        # earlier turns) receive the saved prefix and return only the rest.
+        self.partial = None  # {"name": str, "lines": [str], "parts": int}
+        self.max_continuations = 8
+        # Method-at-a-time building for endpoints with short replies.
+        self.incremental = bool(incremental)
+        self.draft = None  # {"name", "code" (None until skeleton), "attempts", "steps", "note"}
+        self.incremental_disabled = set()
+        self.resumed = False
+        # Sampling temperature the coder should use; raised when replies repeat.
+        self.temperature_hint = None
+        self.max_tokens_hint = None  # reply budget; small during repairs
+        # Regression gate: best project version seen during repair, by passing tests.
+        self.best = None  # {"passes": int, "files": {path: text}}
+        self.reverts = 0
+        # Fresh resampling of a function whose repairs keep failing.
+        self.resample = None  # {"target": qualname, "file": path, "attempts": int, "improved": bool}
+        self.max_resamples = 4
+        self.assertion_rounds = 0  # consecutive repair rounds still failing on assertions
+        # Functions whose fresh rewrites are used up; kept across rounds, cleared on improvement.
+        self.resample_tried = []
+        # Test audit: are the failing tests themselves wrong? {"stage": "ask"|"fix", "tests": [...]}
+        self.test_audit = None
+        self.audited = set()  # test names already judged, so an audit is never repeated
         # Snapshot caller-owned criteria before the model can change the workspace.
         if acceptance is None:
             path = self.workspace / ".cloudcode" / "acceptance.json"
@@ -98,8 +126,69 @@ class TaskWorkflow:
         criteria_dir = self.workspace / ".cloudcode"
         if criteria_dir.exists():
             for path in criteria_dir.iterdir():
-                if path.is_file():
+                if path.is_file() and path.name != STATE_FILE:
                     self.protected_files[path.relative_to(self.workspace).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if resume:
+            self._load_state()
+
+    # ------------------------------------------------------------------ state
+    def _state_path(self):
+        return self.workspace / ".cloudcode" / STATE_FILE
+
+    def _save_state(self):
+        state = {"task": self.task, "phase": self.phase, "completed_phases": self.completed_phases,
+                 "contract": self.contract, "partial": self.partial, "draft": self.draft,
+                 "incremental": self.incremental, "incremental_disabled": sorted(self.incremental_disabled),
+                 "best": self.best, "resample": self.resample, "reverts": self.reverts,
+                 "resample_tried": self.resample_tried, "test_audit": self.test_audit,
+                 "audited": sorted(self.audited),
+                 "files_created": sorted(self.files_created), "files_modified": sorted(self.files_modified)}
+        try:
+            path = self._state_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _load_state(self):
+        path = self._state_path()
+        if not path.is_file():
+            return
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if state.get("task") != self.task:
+            raise ValueError("Saved workflow state belongs to a different task; start a fresh run")
+        self.phase = int(state.get("phase", 1))
+        self.completed_phases = list(state.get("completed_phases", []))
+        self.contract = state.get("contract", "")
+        self.partial = state.get("partial")
+        if (self.partial and state.get("incremental") and self.partial["name"].endswith(".py")
+                and self.path(self.partial["name"]).is_file()):
+            self.partial = None  # superseded by function-level patching
+        self.draft = state.get("draft")
+        self.incremental = self.incremental or bool(state.get("incremental"))
+        self.incremental_disabled = set(state.get("incremental_disabled", []))
+        self.best = state.get("best")
+        self.resample = state.get("resample")
+        self.reverts = int(state.get("reverts", 0))
+        self.resample_tried = list(state.get("resample_tried", []))
+        self.test_audit = state.get("test_audit")
+        self.audited = set(state.get("audited", []))
+        self.files_created = set(state.get("files_created", []))
+        self.files_modified = set(state.get("files_modified", []))
+        self.resumed = True
+        NodeLog.emit("WORKFLOW_RESUMED", {"phase": self.phase, "partial": bool(self.partial),
+                                           "draft": (self.draft or {}).get("name")})
+
+    def initial_prompt(self):
+        """First prompt when the default phased prompt does not apply, else None."""
+        if self.resumed:
+            errors = self.verify() if self.phase >= 4 else []
+            return self.next_prompt(errors, [f"Resumed saved run at phase {self.phase}."])
+        if self.incremental and not self.single_file:
+            self._maybe_start_draft()
+            if self.draft:
+                return self.draft_prompt([])
+        return None
 
     def criteria_errors(self):
         errors = []
@@ -332,6 +421,16 @@ class TaskWorkflow:
                 errors.append(f"{name}: {exc}")
         return errors
 
+    def behavior_trace(self, module):
+        """Concrete call/return evidence for failing tests; empty when unavailable."""
+        try:
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name("behavior_trace.py")),
+                                     str(self.workspace), module], cwd=self.workspace, capture_output=True,
+                                    text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return result.stdout.strip()[:4000] if result.returncode == 0 else ""
+
     def verify(self, final=False):
         """FIX 3: Partial verification — continue checking even when some files are missing.
 
@@ -366,12 +465,36 @@ class TaskWorkflow:
                 if (not self.passed(test) or measured.get("tests_run", 0) < 1
                         or not measured.get("successful") or measured.get("skipped", 0)):
                     errors.append("Generated test suite must run at least one test, with no failures or skips:\n" + command_output(test))
+                    observed = self.behavior_trace(Path(test_file).stem)
+                    if observed:
+                        errors.append("Observed behaviour in failing tests (calls into project code -> actual "
+                                      "return values; compare with what each test expects):\n" + observed)
                 if len(self.commands) > command_index:
                     self.commands[command_index]["test_result"] = measured
         elif not file_errs or test_file not in [e.split(":")[0] for e in file_errs]:
             # Test file missing but not yet reported via file_errs
             if test_file and not self.path(test_file).is_file():
                 errors.append(f"{test_file}: file is missing; test suite cannot run")
+
+        # Stubs left by a partially saved draft must be implemented.
+        for name in existing_py:
+            try:
+                remaining = inc.find_stubs(self.path(name).read_text(encoding="utf-8"))
+            except (OSError, SyntaxError, ValueError):
+                continue
+            if remaining and self.incremental:
+                errors.append(f"{name}: these functions still raise NotImplementedError and must be implemented: "
+                              + ", ".join(remaining))
+
+        # Calls to methods a class never defines fail only at runtime; report them.
+        for name in existing_py:
+            try:
+                missing = inc.undefined_self_calls(self.path(name).read_text(encoding="utf-8"))
+            except (OSError, SyntaxError, ValueError):
+                continue
+            for cls, method, caller, call in missing:
+                errors.append(f"{name}:{call.lineno}: {cls}.{caller} calls self.{method}(), which {cls} does not "
+                              f"define. Implement {method} or call an existing method.")
 
         # FIX 7: Run dependency preflight before import checks
         dep_errors = self.dependency_preflight()
@@ -474,28 +597,663 @@ class TaskWorkflow:
                     break
             if focus:
                 break
+        logic_bug = False
         if focus is None:
             keys = {1: ['logic'], 2: ['logic'], 3: ['gui'], 4: ['main', 'tests'], 5: ['guide']}[self.phase]
             needed = [self.profile[k] for k in keys] + list(self.required_files)
-            focus = next((name for name in needed if not self.path(name).is_file()), self.profile[keys[-1]])
+            focus = next((name for name in needed if not self.path(name).is_file()), None)
+            # Assertion failures in generated tests usually mean the logic is
+            # wrong; steering the model to the test file invites weakened tests.
+            logic_bug = (focus is None and self.phase >= 4 and self.path(self.profile['logic']).is_file()
+                         and any(e.startswith("Generated test suite") and "AssertionError" in e for e in errors))
+            if logic_bug:
+                focus = self.profile['logic']
+            elif focus is None:
+                focus = self.profile[keys[-1]]
         context = []
-        for name in dict.fromkeys([focus, self.profile['logic']]):
+        shown = [focus, self.profile['logic']] + ([self.profile['tests']] if logic_bug else [])
+        for name in dict.fromkeys(shown):
             if name not in existing:
                 continue
             result = NodeInsight.read_file(name, workspace_path=str(self.workspace))
             if result.get('status') == 'success':
                 value = result.get('content', '')
                 self.files_read.add(name)
-                context.append(f'CURRENT FILE {name}:\n' + value[:7000] +
-                               ('\n[Excerpt only; use a read block for the remaining lines.]' if len(value) > 7000 else ''))
-        next_action = (f'NEXT RESPONSE: inspect/fix the blocking import in {focus}. ' if blockers else
-                       f'NEXT RESPONSE: produce one concise complete {focus}. ')
+                limit = 14000 if name == focus else 7000
+                # Repairs: models copy whatever file they are shown. Show the outline
+                # plus full source only of the functions the failures involve.
+                if name.endswith('.py') and (self.incremental and len(value) > 6000
+                                             or self.phase >= 4 and logic_bug and len(value) > 3000):
+                    # Short-reply endpoints are slow on long prompts: send the
+                    # outline plus full source of functions the errors mention.
+                    try:
+                        mentioned = inc.relevant_sources(value, "\n".join(errors))
+                        context.append(f'CURRENT FILE {name} (outline; implemented bodies shown as ...):\n'
+                                       + inc.outline(value) +
+                                       ('\nFULL SOURCE OF FUNCTIONS INVOLVED IN THE FAILURES:\n' + mentioned
+                                        if mentioned else ''))
+                        continue
+                    except SyntaxError:
+                        pass
+                context.append(f'CURRENT FILE {name}:\n' + value[:limit] +
+                               ('\n[Excerpt only; use a read block for the remaining lines.]' if len(value) > limit else ''))
+        if blockers:
+            next_action = f'NEXT RESPONSE: inspect/fix the blocking import in {focus}. '
+        elif logic_bug:
+            deliver = ("output ONLY the corrected function/method definitions in one python block whose first "
+                       f"line is '# filename: {focus}'; the runner splices them into the file")
+            next_action = (f"NEXT RESPONSE: the unit tests fail because {focus} behaves incorrectly (see the failing "
+                           "assertions, the observed calls and return values, and the test source above). Find the "
+                           f"bug in {focus} by comparing it with the original task requirements, then {deliver}. "
+                           "Do not weaken, skip or delete tests; change a test only if it contradicts the original "
+                           "requirements. ")
+        else:
+            next_action = f'NEXT RESPONSE: produce one concise complete {focus}. '
+
         next_action += ('Use an explicitly named file block with a closing fence. Do not repeat other files. '
                         'Read/shell inspection is allowed before repair. Keep all original requirements. '
                         'Use loops for related test cases, never enumerate hundreds of assertions. '
                         'If a file cannot fit, factor cohesive helpers into additional complete files; '
                         'do not omit required features or required public entrypoints.')
         return ('Workspace files: ' + ', '.join(sorted(existing)) + '\n' + '\n\n'.join(context), next_action)
+
+    DEF_LINE = re.compile(r"\s*(?:async\s+def|def|class)\s+\w+")
+
+    @classmethod
+    def merge_continuation(cls, prefix, addition):
+        """Join a saved truncated prefix with a continuation, removing overlap.
+
+        Returns (lines, restarted). Weak models often restate an earlier
+        definition (or the whole file) instead of continuing; a restated
+        def/class line re-anchors the reply there instead of duplicating it.
+        """
+        norm = lambda seq: [line.rstrip() for line in seq]
+        p, a = norm(prefix), norm(addition)
+        lead = 0
+        while lead < len(a) and not a[lead].strip():
+            lead += 1
+        a, addition = a[lead:], list(addition)[lead:]
+        head = [line for line in p if line.strip()][:3]
+        if head and [line for line in a if line.strip()][:len(head)] == head:
+            return list(addition), True
+        defs = [j for j, line in enumerate(p) if cls.DEF_LINE.match(line)]
+        for i, line in enumerate(a):
+            if cls.DEF_LINE.match(line) and line in p:
+                j = p.index(line)
+                if defs and j == defs[0]:
+                    return list(addition), True  # full restart, keep its imports
+                return list(prefix[:j]) + list(addition)[i:], False
+        for k in range(min(len(p), len(a)), 0, -1):
+            if p[-k:] == a[:k] and (k > 1 or a[0].strip()):
+                return list(prefix) + list(addition)[k:], False
+        # The reply may restate a few earlier lines before continuing.
+        if len(a) >= 2 and a[0].strip():
+            for j in range(len(p) - 1, max(len(p) - 80, 0) - 1, -1):
+                if p[j:j + 2] == a[:2]:
+                    return list(prefix[:j]) + list(addition), False
+        return list(prefix) + list(addition), False
+
+    @classmethod
+    def trim_to_boundary(cls, lines, floor):
+        """Cut an unfinished trailing definition so the next part restarts at
+        its def line. Only trims when that still keeps more than `floor` lines."""
+        for j in range(len(lines) - 1, -1, -1):
+            if cls.DEF_LINE.match(lines[j]) and len(lines[j]) - len(lines[j].lstrip()) <= 4:
+                return lines[:j] if j > floor else lines
+        return lines
+
+    @staticmethod
+    def trim_repetition(text, repeats=3):
+        """Return text cut before a degenerate repetition loop, or None if no loop."""
+        lines = text.splitlines()
+        seen = {}
+        for i, line in enumerate(lines):
+            key = line.strip()
+            if len(key) < 12:
+                continue
+            seen.setdefault(key, []).append(i)
+            if len(seen[key]) >= repeats:
+                cut = seen[key][1]
+                return "\n".join(lines[:cut]).rstrip() + "\n" if cut >= 5 else None
+        return None
+
+    def _partial_size(self):
+        return (self.partial["name"], len(self.partial["lines"])) if self.partial else None
+
+    def continuation_prompt(self, errors=()):
+        name, lines = self.partial["name"], self.partial["lines"]
+        text = "\n".join(lines)
+        shown = text if len(text) <= 14000 else "[... earlier lines omitted ...]\n" + text[-14000:]
+        fence = "````" if name.lower().endswith((".md", ".txt")) else "```"
+        last = next((line for line in reversed(lines) if line.strip()), "")
+        others = [e for e in errors if "continuation pending" not in e]
+        parts = [
+            "Original task requirements (unchanged):\n" + self.task + "\n",
+            f"CONTINUATION REQUIRED ({self.partial['parts']} part(s) received so far).",
+            f"Your previous reply was truncated by the output length limit while writing {name}. "
+            f"Lines 1-{len(lines)} are already saved; they are shown below. The last shown line is complete.",
+            f"=== SAVED {name} (lines 1-{len(lines)}) ===\n{shown}\n=== END OF SAVED LINES ===\n",
+        ]
+        if last:
+            parts.append(f"The last saved line is indented {len(last) - len(last.lstrip())} spaces: {last.strip()!r}. "
+                         "Your first line must continue from there at the correct indentation.")
+        parts.append(
+            f"NEXT RESPONSE: continue {name} starting at line {len(lines) + 1}. Output ONLY the remaining lines, "
+            f"in one {fence}python block (use {fence}text for non-code) whose first line is '# filename: {name}'. "
+            "Do NOT repeat saved lines and do NOT restart the file. Keep the same indentation and style. "
+            "Write compact code: share logic through loops/helpers instead of duplicating it per color or piece. "
+            "Finish every remaining required method of this file, then close the fence. "
+            "If the limit is reached again, stop cleanly at the end of a line; you will be asked to continue.")
+        if others:
+            parts.append("Other remaining checks (address after finishing this file):\n" + "\n".join(others)[-3000:])
+        return "\n".join(parts)
+
+    # ------------------------------------------------------ incremental build
+    def _progress_marker(self):
+        draft = None
+        if self.draft:
+            code = self.draft.get("code")
+            # Method continuation, split/continue mode and bounded retries are
+            # progress; the draft's own limits (defer, abandon, step cap) end loops.
+            draft = (self.draft["name"], hashlib.sha256(code.encode()).hexdigest() if code else None,
+                     self.draft.get("mode"), len(self.draft.get("method_partial") or []),
+                     self.draft.get("attempts"), tuple(self.draft.get("deferred") or []))
+        resample = (self.resample["target"], self.resample["attempts"]) if self.resample else None
+        audit = (self.test_audit["stage"], tuple(self.test_audit["tests"])) if self.test_audit else None
+        return (self._partial_size(), draft, resample, self.reverts, audit, tuple(self.resample_tried))
+
+    def _maybe_start_draft(self):
+        if self.draft or self.partial or self.single_file:
+            return
+        target = {1: "logic", 2: "logic", 3: "gui"}.get(self.phase)
+        name = self.profile.get(target) if target else None
+        if (name and name.endswith(".py") and name not in self.incremental_disabled
+                and not self.path(name).is_file()):
+            self.draft = {"name": name, "code": None, "attempts": 0, "steps": 0, "note": ""}
+            NodeLog.emit("DRAFT_STARTED", {"file": name})
+
+    @staticmethod
+    def _draft_target(d):
+        """Next stub to request: source order, with deferred stubs last."""
+        stubs = inc.find_stubs(d["code"])
+        deferred = [q for q in d.get("deferred", []) if q in stubs]
+        return ([q for q in stubs if q not in deferred] + deferred)[0]
+
+    def draft_prompt(self, errors=()):
+        d, name = self.draft, self.draft["name"]
+        parts = ["Original task requirements (unchanged):\n" + self.task + "\n"]
+        if name == self.profile.get("gui") and self.contract:
+            parts.append("API CONTRACT of the logic module (call exactly these names):\n" + self.contract + "\n")
+        parts.append(f"BUILD MODE: replies from this model endpoint are short, so the runner assembles {name} "
+                     "step by step and saves it when every function is implemented.")
+        if d.get("note"):
+            parts.append("PROBLEM WITH YOUR PREVIOUS REPLY: " + d["note"])
+        if d["code"] is None:
+            parts.append(
+                f"STEP 1 - SKELETON. Output the skeleton of {name} in one ```python block whose first line is "
+                f"'# filename: {name}'. Include:\n"
+                "- all imports and module-level constants, fully written (tables, colours, glyph maps);\n"
+                "- every class, with __init__ fully implemented;\n"
+                "- EVERY other method or function the file needs (the public API named in the task plus private "
+                "helpers), each with its full signature, a one-line docstring stating exactly what it does and "
+                "returns, and the body `raise NotImplementedError`.\n"
+                "Design it so that no function needs more than about 40 lines: give each large sub-task its own "
+                "helper stub (for example one move-generation helper per piece type, one drawing helper per "
+                "screen element). Keep the skeleton under 110 lines. Do not implement the other bodies yet; the "
+                "runner requests them one at a time. No prose outside the code block.")
+        else:
+            stubs = inc.find_stubs(d["code"])
+            target = self._draft_target(d)
+            done = len(inc.definitions(d["code"])) - len(stubs)
+            parts.append(f"=== DRAFT OUTLINE {name} ({done} implemented, {len(stubs)} remaining: "
+                         f"{', '.join(stubs)}; implemented bodies are shown as '...') ===\n"
+                         f"{inc.outline(d['code'])}=== END OUTLINE ===\n"
+                         "Do NOT copy the outline or any other function into your reply.")
+            if d.get("mode") == "split":
+                parts.append(
+                    f"NEXT RESPONSE: `{target}` is too long for one reply. Rewrite it as a SHORT dispatcher of at "
+                    "most 20 lines that delegates the work to NEW helper methods, one per case (for example one "
+                    "helper per piece type). Output, in one ```python block whose first line is "
+                    f"'# filename: {name}': the dispatcher's full definition, followed by each new helper as a "
+                    "stub (signature, one-line docstring, body `raise NotImplementedError`). Do not implement the "
+                    "helpers yet. No prose outside the code block.")
+                return "\n".join(parts)
+            if d.get("mode") == "continue":
+                saved = d["method_partial"]
+                last = next((line for line in reversed(saved) if line.strip()), "")
+                parts.append(
+                    f"Your definition of `{target}` was cut off by the reply length limit. Its first "
+                    f"{len(saved)} lines are saved:\n=== SAVED {target} ===\n" + "\n".join(saved) +
+                    f"\n=== END SAVED ===\nThe last saved line is indented {len(last) - len(last.lstrip())} spaces."
+                    f"\nNEXT RESPONSE: continue `{target}` from the next line. Output ONLY the remaining lines of "
+                    f"this one definition in one ```python block whose first line is '# filename: {name}', then "
+                    "close the fence. Do not repeat saved lines. No prose outside the code block.")
+                return "\n".join(parts)
+            parts.append(
+                f"NEXT RESPONSE: implement `{target}` completely. Output ONLY its full definition (def line and "
+                f"body) in one ```python block whose first line is '# filename: {name}'. Follow its docstring and "
+                "the original requirements, and call the draft's other functions by name. Keep it under about "
+                "45 lines: if more is needed, move sub-steps into NEW helper methods and include each new helper "
+                "as a stub (signature, docstring, `raise NotImplementedError`) right after it. Do not repeat "
+                "other existing functions. No prose outside the code block.")
+        return "\n".join(parts)
+
+    def _consume_draft_reply(self, content, blocks, feedback):
+        """Apply a skeleton or single-method reply to the draft; return other blocks."""
+        d, name = self.draft, self.draft["name"]
+        mine = [b for b in blocks if b["lang"] not in PY_COMMANDS and not b.get("routing_error")
+                and (b["filename"] == name or b.get("inferred_filename"))]
+        rest = [b for b in blocks if b not in mine]
+        code, complete = None, True
+        if mine:
+            code, complete = mine[0]["code"], mine[0].get("complete") is not False
+        elif not blocks and content.strip():
+            code = content.strip("\n`")
+        d["steps"] += 1
+        note = info = ""
+        if code is None:
+            note = f"it contained no python code block for {name}."
+        elif d["code"] is None:
+            candidate = code if complete else None
+            if not complete and d["attempts"] >= 1:
+                # Second truncated skeleton: keep the complete definitions.
+                candidate = "\n".join(self.trim_to_boundary(code.splitlines()[:-1], 0))
+            try:
+                if candidate is None:
+                    raise SyntaxError("cut off by the output limit")
+                compile(candidate, name, "exec")
+                if not inc.definitions(candidate):
+                    raise ValueError("it defines no functions or methods")
+                d["code"], added = inc.add_missing_stubs(candidate.rstrip() + "\n")
+                if added:
+                    feedback.append(f"Added stubs for undefined helpers: {', '.join(added)}")
+                feedback.append(f"Skeleton of {name} accepted with {len(inc.find_stubs(d['code']))} stub(s)")
+            except (SyntaxError, ValueError) as exc:
+                note = (f"the skeleton was not usable ({exc}). Send a SHORTER skeleton: signatures, one-line "
+                        "docstrings and `raise NotImplementedError` bodies only.")
+        else:
+            target = self._draft_target(d)
+            mode = d.get("mode")
+            text = code
+            if mode == "continue":
+                text = "\n".join(self.merge_continuation(d["method_partial"], code.splitlines())[0])
+            # Replies often echo the whole draft; keep every complete new
+            # implementation they contain, even when the echo was cut off.
+            stubs = {q.rsplit(".", 1)[-1]: q for q in inc.find_stubs(d["code"])}
+            harvested = dict((stubs[n], src) for n, src in inc.harvest(text, complete) if n in stubs)
+            applied = []
+            if len(harvested) > 1 or (harvested and not complete):
+                for qual, src in harvested.items():
+                    try:
+                        d["code"], _ = inc.splice(d["code"], src, target=qual)
+                        applied.append(qual)
+                    except (SyntaxError, ValueError):
+                        pass
+            try:
+                if applied:
+                    d["code"], added = inc.add_missing_stubs(d["code"])
+                    feedback.append(f"Implemented {', '.join(applied)} from an echoed draft of {name}")
+                    d["mode"], d["method_partial"] = None, None
+                elif not complete:
+                    raise EOFError
+                else:
+                    before_stubs = set(inc.find_stubs(d["code"]))
+                    d["code"], changed = inc.splice(d["code"], text, target=target)
+                    d["code"], added = inc.add_missing_stubs(d["code"])
+                    if mode == "split":
+                        # Helpers created by a split are continued, never split again,
+                        # so the number of functions cannot keep growing.
+                        born = set(inc.find_stubs(d["code"])) - before_stubs
+                        d["split_born"] = sorted(set(d.get("split_born") or []) | born)
+                    feedback.append(f"Implemented {', '.join(changed)} in draft {name}" +
+                                    (f"; added stubs for undefined helpers {', '.join(added)}" if added else ""))
+                    d["mode"], d["method_partial"] = None, None
+            except EOFError:
+                # Cut off by the reply limit. First ask the model to split the
+                # function into helper stubs; if the (short) definition is still
+                # cut off, continue it from its saved lines instead.
+                saved = text.splitlines()[:-1]
+                if mode is None and target in (d.get("split_born") or []) and saved:
+                    d["mode"], d["method_partial"] = "continue", saved
+                    feedback.append(f"Saved {len(saved)} lines of {target}; requesting the rest")
+                elif mode is None:
+                    d["mode"] = "split"  # a strategy change, not a failed attempt
+                    info = f"`{target}` was cut off by the reply length limit, so it must be split up."
+                elif len(saved) > len(d.get("method_partial") or []) and len(saved) < 400:
+                    d["mode"], d["method_partial"] = "continue", saved
+                    feedback.append(f"Saved {len(saved)} lines of {target}; requesting the rest")
+                else:
+                    note = f"`{target}` was cut off again without new lines."
+            except (SyntaxError, ValueError) as exc:
+                note = (f"`{target}` could not be applied ({exc}). Send ONLY that one definition; if it is long, "
+                        "make it shorter by moving sub-steps into new helper stubs.")
+        if note:
+            d["attempts"] += 1
+            d["note"] = note
+        else:
+            d["attempts"], d["note"] = 0, info
+        if d["code"] is not None and d["attempts"] >= 2 and self.draft is d:
+            # One stubborn function must not discard the whole draft: move it
+            # to the back of the queue and fill in the others first.
+            stubs = inc.find_stubs(d["code"])
+            deferred = [q for q in d.get("deferred", []) if q in stubs]
+            current = self._draft_target(d)
+            if current not in deferred and len(deferred) + 1 < len(stubs):
+                d["deferred"] = deferred + [current]
+                d["attempts"], d["mode"], d["method_partial"] = 0, None, None
+                d["note"] = ""
+                feedback.append(f"Deferred {current}; continuing with the other functions of {name}")
+        if d["attempts"] >= 3 or d["steps"] > 80:
+            self.incremental_disabled.add(name)
+            self.draft = None
+            stubs = inc.find_stubs(d["code"]) if d["code"] else []
+            total = len(inc.definitions(d["code"])) if d["code"] else 0
+            if d["code"] and total and len(stubs) <= total // 2:
+                # Keep a mostly finished draft: save it with its remaining stubs,
+                # which verification reports and repair patches one by one.
+                rest.insert(0, {"code": d["code"], "lang": "python", "filename": name, "raw_code": d["code"],
+                                "inferred_filename": False, "routing_error": None, "complete": True})
+                feedback.append(f"Saved {name} with {len(stubs)} unimplemented function(s) for repair: "
+                                + ", ".join(stubs))
+                NodeLog.emit("DRAFT_SAVED_PARTIAL", {"file": name, "stubs": stubs})
+            else:
+                feedback.append(f"Step-by-step build of {name} abandoned; request the complete file instead")
+                NodeLog.emit("DRAFT_ABANDONED", {"file": name, "reason": note})
+        elif d["code"] is not None and not inc.find_stubs(d["code"]):
+            rest.insert(0, {"code": d["code"], "lang": "python", "filename": name, "raw_code": d["code"],
+                            "inferred_filename": False, "routing_error": None, "complete": True})
+            self.draft = None
+            feedback.append(f"Every function of {name} is implemented; saving the assembled file")
+            NodeLog.emit("DRAFT_COMPLETED", {"file": name, "steps": d["steps"]})
+        return rest
+
+    def _rewrite_of_existing(self, name, code, block):
+        """A whole-file (or outline-copying) reply for an existing Python file."""
+        try:
+            path = self.path(name)
+        except ValueError:
+            return False
+        if not path.is_file():
+            return False
+        if "...  # implemented" in code:
+            return True
+        current = path.read_text(encoding="utf-8")
+        return len(code.splitlines()) >= 0.7 * len(current.splitlines()) or block.get("complete") is False
+
+    def _patch_from_rewrite(self, name, code, complete, feedback, errors):
+        """Patch only complete, changed functions from a rewrite; never overwrite
+        working code with a truncated or placeholder copy. Returns True if handled."""
+        path = self.path(name)
+        current = path.read_text(encoding="utf-8")
+        try:
+            existing = {q.rsplit(".", 1)[-1]: q for q in inc.definitions(current)}
+            unchanged = {src.strip() for _, src in inc.harvest(current)}
+        except SyntaxError:
+            return False
+        missing = {m for _, m, _, _ in inc.undefined_self_calls(current)}
+        candidates = [(n, src) for n, src in inc.harvest(code, complete)
+                      if (n in existing or n in missing) and src.strip() not in unchanged]
+        if self.resample and self.resample.get("file") == name:
+            # A fresh rewrite may replace only its target (plus brand-new helpers);
+            # other functions echoed back with changes are not what was asked for.
+            target = self.resample["target"].rsplit(".", 1)[-1]
+            candidates = [(n, src) for n, src in candidates if n == target or n not in existing]
+        applied = []
+        for n, src in candidates:
+            try:
+                current, changed = inc.splice(current, src, replace_implemented=True)
+                applied.extend(changed)
+            except (SyntaxError, ValueError):
+                continue
+        if applied:
+            res = NodeForge.write_file(name, current, workspace_path=str(self.workspace))
+            if not isinstance(res, dict) or res.get("status") != "success":
+                errors.append(f"Write failed: {name}: {res}")
+                return True
+            self.files_modified.add(name)
+            feedback.append(f"Patched {', '.join(applied)} in {name} from a whole-file reply")
+            NodeLog.emit("FILE_MODIFIED", {"file": name, "patched": applied})
+        else:
+            errors.append(f"Your reply rewrote {name} without a usable change"
+                          + (" (it copied the outline placeholders)" if "# implemented" in code else "")
+                          + f". Send ONLY the corrected function definitions for {name}, not the whole file.")
+        return True
+
+    # --------------------------------------------------------- repair quality
+    def _project_sources(self):
+        files = {}
+        for rel in self.snapshot():
+            if rel.endswith(".py"):
+                try:
+                    files[rel] = self.path(rel).read_text(encoding="utf-8")
+                except OSError:
+                    pass
+        return files
+
+    def _test_passes(self):
+        """Passing test count from this round's trusted test run, or None."""
+        for record in reversed(self.commands):
+            if record.get("kind") == "tests" and record.get("round") == self.rounds:
+                measured = record.get("test_result") or {}
+                if "tests_run" not in measured:
+                    return None
+                return measured["tests_run"] - measured.get("failures", 0) - measured.get("errors", 0)
+        return None
+
+    def _gate(self, errors, final=False):
+        """Keep the best version seen during repair; revert changes that pass fewer tests."""
+        passes = self._test_passes()
+        if passes is None or self.single_file:
+            return errors
+        files = self._project_sources()
+        tests = self.profile.get("tests")
+        best = self.best
+        same_tests = best is not None and best["files"].get(tests) == files.get(tests)
+        if best is not None and same_tests and passes < best["passes"] and files != best["files"]:
+            for rel, text in best["files"].items():
+                if files.get(rel) != text:
+                    NodeForge.write_file(rel, text, workspace_path=str(self.workspace))
+            for rel in set(files) - set(best["files"]):
+                try:
+                    self.path(rel).unlink()
+                except OSError:
+                    pass
+            self.reverts += 1
+            NodeLog.emit("REGRESSION_REVERTED", {"from": best["passes"], "to": passes})
+            note = (f"REVERTED: your last change made the tests worse ({passes} passing, down from "
+                    f"{best['passes']}), so the files were restored to the best version. Try a different fix.")
+            if self.resample:
+                self.resample["last_result"] = f"candidate passed {passes} tests (best is {best['passes']}); discarded"
+            restored = self.verify(final=final)
+            # The round itself failed; record that honestly after restoring.
+            self.verification.append({"round": self.rounds, "final": final, "passed": False,
+                                      "errors": [note], "reverted": True, "files": self.snapshot()})
+            return [note] + restored
+        if best is None or not same_tests or passes >= best["passes"]:
+            if best is not None and passes > best["passes"]:
+                if self.resample:
+                    self.resample["last_result"] = f"candidate improved passing tests to {passes}; kept"
+                    self.resample["improved"] = True
+                self.resample_tried = []  # new code: earlier suspects may matter again
+            self.best = {"passes": passes, "files": files}
+        return errors
+
+    def _failing_function(self, errors):
+        """Project function the behaviour trace implicates in the first failing test."""
+        text = "\n".join(e for e in errors if e.startswith("Observed behaviour"))
+        tried = set(self.resample_tried)
+        known = {}
+        try:
+            known = {q.rsplit(".", 1)[-1]: (rel, q) for rel in self._project_sources()
+                     if rel != self.profile.get("tests")
+                     for q in inc.definitions(self.path(rel).read_text(encoding="utf-8"))}
+        except (OSError, SyntaxError):
+            pass
+        # Direct calls from the failing tests first, then the functions they call.
+        # A bug copied into a callee is invisible while its caller returns early.
+        calls = re.findall(r"^(\s{4,8})(?:[A-Za-z_]\w*\.)?([A-Za-z_]\w*)\(.*?\) -> ", text, re.M)
+        ordered = [n for indent, n in calls if len(indent) == 4] + [n for indent, n in calls if len(indent) > 4]
+        for name in ordered:
+            if name != "__init__" and name in known and known[name][1] not in tried:
+                return known[name]
+        # No traced callee left: try functions the implicated one calls by name.
+        for rel, qual in (known.get(n) for n in ordered if n in known):
+            try:
+                body = inc.relevant_sources(self.path(rel).read_text(encoding="utf-8"), qual.rsplit(".", 1)[-1])
+            except (OSError, SyntaxError):
+                continue
+            for callee in re.findall(r"self\.([A-Za-z_]\w*)\(", body):
+                if callee in known and known[callee][1] not in tried and callee != "__init__":
+                    return known[callee]
+        return None
+
+    def _failing_tests(self, errors):
+        suite = "\n".join(e for e in errors if e.startswith("Generated test suite"))
+        return sorted(set(re.findall(r"^(?:FAIL|ERROR): (\w+)", suite, re.M)))
+
+    def _update_resample(self, errors):
+        """Switch from repair to fresh resampling when assertion failures persist,
+        and audit the tests once rewriting the code stops helping."""
+        logic_fail = self.phase >= 4 and any(e.startswith("Generated test suite") and "AssertionError" in e
+                                             for e in errors)
+        if not logic_fail:
+            if self.resample:
+                self.temperature_hint = None  # undo only the resampling temperature
+            self.resample = None
+            self.test_audit = None
+            self.assertion_rounds = 0
+            return
+        self.assertion_rounds += 1
+        if self.test_audit:
+            return
+        if self.resample and self.resample["attempts"] >= self.max_resamples:
+            if self.resample["target"] not in self.resample_tried:
+                self.resample_tried.append(self.resample["target"])
+            unimproved = not self.resample.get("improved")
+            failing = [t for t in self._failing_tests(errors) if t not in self.audited]
+            self.resample = None
+            self.temperature_hint = None
+            if unimproved and failing:
+                # Rewriting the code changed nothing: maybe the tests are what is wrong.
+                self.test_audit = {"stage": "ask", "tests": failing}
+                NodeLog.emit("TEST_AUDIT_STARTED", {"tests": failing})
+                return
+        if not self.resample and (self.assertion_rounds >= 2 or self.resample_tried):
+            # Two repair rounds capture most of the gain; resample after that.
+            found = self._failing_function(errors)
+            if found:
+                self.resample = {"target": found[1], "file": found[0], "attempts": 0}
+                NodeLog.emit("RESAMPLE_STARTED", {"target": found[1]})
+        if self.resample:
+            self.resample["attempts"] += 1
+            self.temperature_hint = 0.8
+
+    def _test_sources(self, names):
+        tests_name = self.profile.get("tests")
+        try:
+            source = self.path(tests_name).read_text(encoding="utf-8")
+        except (OSError, TypeError):
+            return ""
+        return inc.relevant_sources(source, " ".join(names), limit=9000)
+
+    def audit_prompt(self, errors):
+        a = self.test_audit
+        tests_name = self.profile.get("tests")
+        trace = "\n".join(e for e in errors if e.startswith("Observed behaviour"))
+        suite = "\n".join(e for e in errors if e.startswith("Generated test suite"))
+        failures = "\n".join(line for line in suite.splitlines()
+                             if line.startswith(("FAIL:", "ERROR:", "AssertionError", "    self.assert")))
+        head = ["Original task requirements (unchanged):\n" + self.task + "\n",
+                f"=== FAILING TESTS in {tests_name} ===\n{self._test_sources(a['tests'])}\n=== END ===",
+                "Assertion failures:\n" + failures[-3000:]]
+        if trace:
+            head.append(trace[-3000:])
+        if a["stage"] == "ask":
+            head.append(
+                "TEST AUDIT: several fresh rewrites of the implementation did not make these tests pass. A test "
+                "can itself be wrong (a wrong expected value, or an expectation the requirements never asked for). "
+                "Judge each failing test ONLY against the original requirements and the rules of the domain.\n"
+                "NEXT RESPONSE: one line per test, exactly in the form\n"
+                "<test_name>: TEST_WRONG - <reason>   or   <test_name>: CODE_WRONG - <reason>\n"
+                "No code and no other text.")
+        else:
+            head.append(
+                f"You judged these tests wrong: {', '.join(a['wrong'])}. NEXT RESPONSE: rewrite ONLY those test "
+                "methods so they check the original requirements correctly. Keep every test (do not delete, skip "
+                "or empty any) and keep their names. Output the corrected method definitions inside their class "
+                f"in one ```python block whose first line is '# filename: {tests_name}'. No other code, no prose.")
+        return "\n".join(head)
+
+    def _consume_audit_reply(self, content, blocks, feedback, errors):
+        """Handle a test-audit verdict or a test fix; returns the remaining blocks."""
+        a = self.test_audit
+        tests_name = self.profile.get("tests")
+        if a["stage"] == "ask":
+            verdicts = dict(re.findall(r"(\w+)\s*:\s*(TEST_WRONG|CODE_WRONG)", content or ""))
+            wrong = [t for t in a["tests"] if verdicts.get(t) == "TEST_WRONG"]
+            self.audited.update(a["tests"])
+            feedback.append("Test audit verdicts: " + (", ".join(f"{t}={v}" for t, v in verdicts.items()) or "none"))
+            NodeLog.emit("TEST_AUDIT_VERDICT", {"verdicts": verdicts})
+            self.test_audit = {"stage": "fix", "tests": a["tests"], "wrong": wrong} if wrong else None
+            return [b for b in blocks if b["lang"] in PY_COMMANDS]
+        # stage "fix": splice only the judged-wrong test methods, never fewer tests
+        path = self.path(tests_name)
+        current = path.read_text(encoding="utf-8")
+        code = next((b["code"] for b in blocks if b.get("filename") == tests_name
+                     and b.get("complete") is not False), None)
+        self.test_audit = None
+        if code is None:
+            errors.append(f"The test fix did not contain a complete block for {tests_name}.")
+            return [b for b in blocks if b["lang"] in PY_COMMANDS]
+        kept = [src for n, src in inc.harvest(code) if n in a["wrong"]]
+        try:
+            patched, changed = inc.splice(current, "\n\n".join(kept), replace_implemented=True)
+            before = len([q for q in inc.definitions(current) if q.rsplit(".", 1)[-1].startswith("test")])
+            after = len([q for q in inc.definitions(patched) if q.rsplit(".", 1)[-1].startswith("test")])
+            if after < before or "skip" in "".join(kept).lower():
+                raise ValueError("the fix removed or skipped tests")
+        except (SyntaxError, ValueError) as exc:
+            errors.append(f"Test fix rejected: {exc}")
+            return [b for b in blocks if b["lang"] in PY_COMMANDS]
+        NodeForge.write_file(tests_name, patched, workspace_path=str(self.workspace))
+        self.files_modified.add(tests_name)
+        feedback.append(f"Corrected judged-wrong tests: {', '.join(changed)}")
+        NodeLog.emit("TEST_AUDIT_FIXED", {"tests": changed})
+        return [b for b in blocks if b["lang"] in PY_COMMANDS]
+
+    def resample_prompt(self, errors, feedback):
+        r = self.resample
+        name, target = r["file"], r["target"]
+        short = target.rsplit(".", 1)[-1]
+        source = self.path(name).read_text(encoding="utf-8")
+        tests_name = self.profile.get("tests")
+        tests = self.path(tests_name).read_text(encoding="utf-8") if tests_name and self.path(tests_name).is_file() else ""
+        # Signal, not noise: the explained trace plus the failing test names, not
+        # pages of repeated unittest output about code the model cannot see.
+        suite = "\n".join(e for e in errors if e.startswith("Generated test suite"))
+        failing = sorted(set(re.findall(r"^(?:FAIL|ERROR): (\w+)", suite, re.M)))
+        trace = "\n".join(e for e in errors if e.startswith("Observed behaviour"))
+        observed = (("Failing tests: " + ", ".join(failing) + "\n") if failing else "") + (trace or suite)
+        reverted = [e for e in errors if e.startswith("REVERTED")]
+        parts = ["Original task requirements (unchanged):\n" + self.task + "\n",
+                 f"FRESH REWRITE {r['attempts']}/{self.max_resamples} of `{target}` in {name}. Repairs of the "
+                 "existing version kept failing the tests below, so it is being written again from scratch. The "
+                 "old body is deliberately not shown: do not try to recall or reuse it.",
+                 f"=== OUTLINE OF {name} (bodies shown as ...; use these names and attributes) ===\n"
+                 + inc.outline(source) + "=== END OUTLINE ==="]
+        if tests:
+            parts.append(f"=== {tests_name} (the tests your function must pass) ===\n{tests[:6000]}\n=== END ===")
+        parts.extend(reverted)  # never trimmed away with the long test output
+        parts.append("Observed facts from the current version:\n" + observed[-5000:])
+        if r.get("last_result"):
+            parts.append("Previous fresh candidate: " + r["last_result"] + ".")
+        parts.append(
+            f"NEXT RESPONSE: write a NEW, complete implementation of `{short}` that satisfies the original "
+            "requirements and makes these tests pass. Lines marked WHY show which condition in the old version "
+            "caused the wrong result and the exact values it compared; make sure your version does not repeat "
+            "it. Output ONLY that one function definition (plus any new helper "
+            f"it needs) in one ```python block whose first line is '# filename: {name}'. No other code, no prose.")
+        return "\n".join(parts)
 
     def process(self, content):
         from node_core.agents import extract_code_blocks_with_metadata, extract_api_contracts
@@ -508,11 +1266,40 @@ class TaskWorkflow:
             self.stop("MAX_ROUNDS_REACHED", "Configured model response budget exhausted")
             return None
         self.rounds += 1
-        before = (self.phase, self.snapshot(), set(self.read_evidence))
+        before = (self.phase, self.snapshot(), set(self.read_evidence), self._progress_marker())
         feedback, errors = [], []
         content = content or ""
         defaults = {1: "logic", 2: "logic", 3: "gui", 4: "tests", 5: "guide"}
-        for block in extract_code_blocks_with_metadata(content, self.profile[defaults[self.phase]]):
+        blocks = extract_code_blocks_with_metadata(content, self.profile[defaults[self.phase]])
+        if self.draft:
+            blocks = self._consume_draft_reply(content, blocks, feedback)
+        if self.test_audit:
+            blocks = self._consume_audit_reply(content, blocks, feedback, errors)
+        if self.partial:
+            pending = self.partial
+            commands = {"read", "bash", "sh", "shell", "cmd", "powershell"}
+            match = next((b for b in blocks if b["lang"] not in commands and not b.get("routing_error")
+                          and (b["filename"] == pending["name"] or b.get("inferred_filename"))), None)
+            if match is None and not blocks and content.strip():
+                match = {"code": content.strip("\n`"), "complete": True, "lang": ""}
+            if match is not None:
+                lines, restarted = self.merge_continuation(pending["lines"], match["code"].splitlines())
+                if match.get("complete") is False and len(lines) <= len(pending["lines"]):
+                    lines = pending["lines"]  # a shorter truncated part adds nothing
+                match.update({"filename": pending["name"], "code": "\n".join(lines),
+                              "inferred_filename": False, "routing_error": None, "continued": True,
+                              "floor": len(pending["lines"])})
+                pending["parts"] += 1
+                self.partial = None
+                if match.get("complete") is not False:
+                    match["code"] += "\n"
+                if match not in blocks:
+                    blocks.insert(0, match)
+                feedback.append(f"Joined continuation part {pending['parts']} of {pending['name']} "
+                                f"({len(lines)} lines total)")
+                if match.get("complete") is False:
+                    match["parts"] = pending["parts"]
+        for block in blocks:
             if self.should_stop():
                 self.stop("CANCELLED", "User requested cancellation")
                 break
@@ -520,8 +1307,31 @@ class TaskWorkflow:
             if block.get("routing_error"):
                 errors.append(block["routing_error"])
                 continue
+            if ((self.incremental or self.phase >= 4) and name and name.endswith(".py") and lang not in PY_COMMANDS
+                    and not block.get("continued") and not block.get("routing_error")
+                    and self._rewrite_of_existing(name, code, block)):
+                handled = self._patch_from_rewrite(name, code, block.get("complete") is not False, feedback, errors)
+                if handled:
+                    continue
+            if block.get("complete") is False and name and name.lower().endswith((".txt", ".md")):
+                trimmed = self.trim_repetition(code)
+                if trimmed is not None:
+                    code = block["code"] = trimmed
+                    block["complete"] = True
+                    feedback.append(f"{name} ended in a repetition loop; kept the text before the loop")
             if block.get("complete") is False:
-                errors.append(f"Incomplete code fence for {name}; response may be truncated. Send this complete file alone with a closing fence.")
+                parts = block.get("parts", 1)
+                # Keep only complete lines; the final line may be cut mid-token.
+                lines = code.splitlines()[:-1]
+                if name and name.lower().endswith(".py"):
+                    lines = self.trim_to_boundary(lines, block.get("floor", 0))
+                if (name and lang not in {"read", "bash", "sh", "shell", "cmd", "powershell"}
+                        and parts < self.max_continuations and lines and not self.partial):
+                    self.partial = {"name": name, "lines": lines, "parts": parts}
+                    feedback.append(f"{name} was cut off by the output limit after {len(lines)} lines; "
+                                    "saved as a partial draft for continuation")
+                else:
+                    errors.append(f"Incomplete code fence for {name}; response may be truncated. Send this complete file alone with a closing fence.")
                 continue
             if lang == "read":
                 for name in code.splitlines():
@@ -557,6 +1367,21 @@ class TaskWorkflow:
                     existed = path.exists()
                     if existed and block.get("inferred_filename"):
                         raise ValueError(f"Ambiguous overwrite of {name}; include '# filename: {name}' explicitly")
+                    if (existed and (self.incremental or self.phase >= 4) and name.endswith(".py")
+                            and inc.only_definitions(code)):
+                        current = path.read_text(encoding="utf-8")
+                        if self.resample and self.resample.get("file") == name:
+                            target = self.resample["target"].rsplit(".", 1)[-1]
+                            names = {q.rsplit(".", 1)[-1] for q in inc.definitions(current)}
+                            kept = [src for n, src in inc.harvest(code) if n == target or n not in names]
+                            if kept:
+                                code = "\n\n".join(kept)
+                        if len(code.splitlines()) < 0.7 * len(current.splitlines()):
+                            try:
+                                code, changed = inc.splice(current, code, replace_implemented=True)
+                                feedback.append(f"Patched {', '.join(changed)} in {name}")
+                            except (SyntaxError, ValueError) as exc:
+                                raise ValueError(f"Could not apply definition patch to {name}: {exc}") from exc
                     # FIX 2: Check for structurally incomplete artifacts
                     artifact_issues = self.detect_incomplete_artifact(code, name)
                     if artifact_issues:
@@ -579,12 +1404,21 @@ class TaskWorkflow:
                         elif path.is_file():
                             path.unlink()
                         raise ValueError(f"Write failed: {name}: {res}")
-                    if old != code:
+                    if old is not None and old.strip() == code.strip() and self.phase >= 4:
+                        # A byte-identical "fix" silently repeats the failure; say so.
+                        errors.append(f"Your reply for {name} is IDENTICAL to the existing file: nothing was "
+                                      "changed, so the failing behaviour reported above is still present. "
+                                      "Change the code that the observed values point to.")
+                    elif old != code:
                         (self.files_modified if existed else self.files_created).add(name)
                     feedback.append(f"Saved and read back {name}")
                     NodeLog.emit("FILE_CREATED" if not existed else "FILE_MODIFIED", {"file": name})
                 except (OSError, ValueError, SyntaxError) as exc:
                     errors.append(str(exc))
+        if self.partial:
+            # A pending continuation blocks phase advancement like any missing file.
+            errors.append(f"{self.partial['name']} is incomplete (truncated); continuation pending "
+                          f"({len(self.partial['lines'])} lines saved)")
         if self.status != "IN_PROGRESS":
             return None
         if self.phase >= 3 and not self.single_file and not self.file_errors([self.profile["logic"]]):
@@ -592,7 +1426,7 @@ class TaskWorkflow:
         # A malformed documentation block must not hide real test failures in
         # already-written code. Retain every artifact error and do not advance.
         if errors and self.phase in (4, 5):
-            errors.extend(self.verify(final=self.phase == 5))
+            errors.extend(self._gate(self.verify(final=self.phase == 5)))
         if not errors:
             if self.single_file:
                 errors = self.file_errors(["hello.py", *self.required_files]) + self.criteria_errors()
@@ -633,34 +1467,41 @@ class TaskWorkflow:
                 if not errors:
                     self.transition(4)
             elif self.phase == 4:
-                errors = self.verify()
+                errors = self._gate(self.verify())
                 if not errors:
                     self.transition(5)
             elif self.phase == 5:
                 # Final verification always re-runs after the last writes, even if
                 # the model omitted its completion token or changed earlier files.
-                errors = self.verify(final=True)
+                errors = self._gate(self.verify(final=True), final=True)
                 if not errors and self.status == "IN_PROGRESS":
                     self.transition(6)
                     self.stop("COMPLETED", "All phases and configured acceptance checks passed")
                 elif self.status == "IN_PROGRESS" and not self.checks and not self.file_errors([self.profile["guide"]]):
                     self.stop("VERIFICATION_FAILED", "Task-specific acceptance checks are not configured")
         self.remaining = errors
-        after = (self.phase, self.snapshot(), set(self.read_evidence))
+        after = (self.phase, self.snapshot(), set(self.read_evidence), self._progress_marker())
         self.files_created.update(set(after[1]) - set(before[1]))
         self.files_modified.update(name for name in before[1] if name in after[1]
                                    and before[1][name] != after[1][name])
         self.no_progress = self.no_progress + 1 if before == after else 0
-        fingerprint = (self.phase, tuple(sorted(after[1].items())), tuple(sorted(after[2])))
+        fingerprint = (self.phase, tuple(sorted(after[1].items())), tuple(sorted(after[2])), after[3])
         self.seen_states[fingerprint] = self.seen_states.get(fingerprint, 0) + 1
 
         # FIX 4: Track error history for adaptive feedback
-        error_fingerprint = tuple(sorted(set(errors))) if errors else ()
+        # Ignore run timings ("Ran 6 tests in 0.001s") so identical failures compare equal.
+        error_fingerprint = tuple(sorted({re.sub(r"\d+\.\d+s", "", e) for e in errors})) if errors else ()
         if self.error_history and self.error_history[-1] == error_fingerprint:
             self.consecutive_identical_errors += 1
         else:
             self.consecutive_identical_errors = 0
         self.error_history.append(error_fingerprint)
+        # Near-deterministic sampling repeats the same wrong answer on a
+        # near-identical prompt; add variety once errors stop changing.
+        self.temperature_hint = (0.9 if self.consecutive_identical_errors >= 4 else
+                                 0.6 if self.consecutive_identical_errors >= 2 else None)
+        # Repairs need functions, not files: a small budget stops whole-file copies.
+        self.max_tokens_hint = 800 if self.phase >= 4 and not self.single_file else None
 
         if self.status == "IN_PROGRESS":
             stall_detected = (self.no_progress >= self.stall_limit
@@ -680,17 +1521,39 @@ class TaskWorkflow:
                     self.no_progress = 0
                     self.seen_states.clear()
                     # Build a recovery-specific feedback message
+                    if self.partial or self.draft:
+                        self._save_state()
+                        return self.next_prompt(errors, feedback)
+                    self._save_state()
                     return self._build_recovery_feedback(errors, feedback)
                 else:
                     self.stop("STALLED", "Repeated iterations made no new file or phase progress")
+        self._save_state()
         if self.status != "IN_PROGRESS":
             return None
+        return self.next_prompt(errors, feedback)
+
+    def next_prompt(self, errors, feedback):
+        """Build the next model prompt from current workflow state."""
+        if self.partial:
+            return self.continuation_prompt(errors)
+        self._update_resample(errors)
+        if self.test_audit:
+            return self.audit_prompt(errors)
+        if self.resample:
+            return self.resample_prompt(errors, feedback)
+        if self.incremental and not self.single_file:
+            self._maybe_start_draft()
+            if self.draft:
+                return self.draft_prompt(errors)
 
         # FIX 4: Build adaptive feedback based on error repetition count
         adaptive_prefix = self._build_adaptive_prefix(errors)
         checkpoint, next_action = self.repair_checkpoint(errors)
 
+        reverted = "".join(e + "\n" for e in errors if e.startswith("REVERTED"))
         return ("Original task requirements (unchanged):\n" + self.task + "\n\n" + checkpoint + "\n\n" +
+                reverted +
                 "Iteration finished; the overall task is still incomplete. TERMINATE, PHASE_COMPLETE and "
                 "TASK_COMPLETE are requests for evaluation, never proof of completion.\n" +
                 adaptive_prefix +

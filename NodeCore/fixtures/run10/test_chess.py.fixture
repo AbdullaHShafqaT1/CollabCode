@@ -1,0 +1,58 @@
+
+import unittest
+import chess_logic
+
+class TestChessGame(unittest.TestCase):
+    def setUp(self):
+        self.game = chess_logic.ChessGame()
+
+    def test_initial_board_layout(self):
+        expected_board = [
+            ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR'],
+            ['bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP'],
+            [None, None, None, None, None, None, None, None],
+            [None, None, None, None, None, None, None, None],
+            [None, None, None, None, None, None, None, None],
+            [None, None, None, None, None, None, None, None],
+            ['wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP'],
+            ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+        ]
+        self.assertEqual(self.game.board, expected_board)
+
+    def test_pawn_opening_move(self):
+        self.assertTrue(self.game.make_move((6, 0), (4, 0)))
+        self.assertEqual(self.game.board[4][0], 'wP')
+        self.assertEqual(self.game.board[6][0], None)
+        self.assertEqual(self.game.current_turn, 'B')
+
+    def test_knight_leap_over_pawn(self):
+        self.game.make_move((6, 0), (4, 0))
+        self.assertTrue(self.game.make_move((1, 1), (2, 2)))
+        self.assertEqual(self.game.board[2][2], 'bN')
+        self.assertEqual(self.game.board[1][1], None)
+        self.assertEqual(self.game.current_turn, 'W')
+
+    def test_turn_alternating(self):
+        self.assertTrue(self.game.make_move((6, 0), (4, 0)))
+        self.assertEqual(self.game.current_turn, 'B')
+        self.assertTrue(self.game.make_move((1, 1), (2, 2)))
+        self.assertEqual(self.game.current_turn, 'W')
+
+    def test_simple_check_detection(self):
+        self.game.make_move((6, 0), (4, 0))
+        self.game.make_move((1, 1), (2, 2))
+        self.game.make_move((4, 0), (5, 0))
+        self.game.make_move((2, 2), (4, 0))
+        self.assertTrue(self.game.is_in_check('W'))
+
+    def test_json_save_and_load_consistency(self):
+        self.game.make_move((6, 0), (4, 0))
+        self.game.make_move((1, 1), (2, 2))
+        self.game.save_game('test_game.json')
+        new_game = chess_logic.ChessGame()
+        new_game.load_game('test_game.json')
+        self.assertEqual(self.game.board, new_game.board)
+        self.assertEqual(self.game.current_turn, new_game.current_turn)
+
+if __name__ == '__main__':
+    unittest.main()

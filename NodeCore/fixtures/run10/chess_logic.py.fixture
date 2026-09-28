@@ -1,0 +1,156 @@
+
+import json
+
+UNICODE_PIECES = {
+    'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+    'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
+}
+
+class ChessGame:
+    def __init__(self):
+        self.board = [
+            ['bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR'],
+            ['bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP'],
+            [None, None, None, None, None, None, None, None],
+            [None, None, None, None, None, None, None, None],
+            [None, None, None, None, None, None, None, None],
+            [None, None, None, None, None, None, None, None],
+            ['wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP'],
+            ['wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR']
+        ]
+        self.current_turn = 'W'
+
+    def get_piece(self, row, col):
+        return self.board[row][col]
+
+    def get_legal_moves(self, row, col):
+        piece = self.get_piece(row, col)
+        if not piece or piece[0] != self.current_turn:
+            return []
+        color = piece[0]
+        if piece[1] == 'P':
+            return self._pawn_moves(row, col, color)
+        elif piece[1] == 'N':
+            return self._knight_moves(row, col, color)
+        elif piece[1] == 'B':
+            return self._bishop_moves(row, col, color)
+        elif piece[1] == 'R':
+            return self._rook_moves(row, col, color)
+        elif piece[1] == 'Q':
+            return self._queen_moves(row, col, color)
+        elif piece[1] == 'K':
+            return self._king_moves(row, col, color)
+        return []
+
+    def _pawn_moves(self, row, col, color):
+        moves = []
+        direction = -1 if color == 'w' else 1
+        if self.get_piece(row + direction, col) is None:
+            moves.append((row + direction, col))
+            if (row == 6 and color == 'w') or (row == 1 and color == 'b'):
+                if self.get_piece(row + 2 * direction, col) is None:
+                    moves.append((row + 2 * direction, col))
+        for dc in [-1, 1]:
+            if 0 <= col + dc < 8:
+                target_piece = self.get_piece(row + direction, col + dc)
+                if target_piece and target_piece[0] != color:
+                    moves.append((row + direction, col + dc))
+        return moves
+
+    def _knight_moves(self, row, col, color):
+        moves = []
+        for dr, dc in [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]:
+            if 0 <= row + dr < 8 and 0 <= col + dc < 8:
+                target_piece = self.get_piece(row + dr, col + dc)
+                if not target_piece or target_piece[0] != color:
+                    moves.append((row + dr, col + dc))
+        return moves
+
+    def _bishop_moves(self, row, col, color):
+        moves = []
+        for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            r, c = row + dr, col + dc
+            while 0 <= r < 8 and 0 <= c < 8:
+                target_piece = self.get_piece(r, c)
+                if target_piece:
+                    if target_piece[0] != color:
+                        moves.append((r, c))
+                    break
+                moves.append((r, c))
+                r += dr
+                c += dc
+        return moves
+
+    def _rook_moves(self, row, col, color):
+        moves = []
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            r, c = row + dr, col + dc
+            while 0 <= r < 8 and 0 <= c < 8:
+                target_piece = self.get_piece(r, c)
+                if target_piece:
+                    if target_piece[0] != color:
+                        moves.append((r, c))
+                    break
+                moves.append((r, c))
+                r += dr
+                c += dc
+        return moves
+
+    def _queen_moves(self, row, col, color):
+        moves = self._bishop_moves(row, col, color) + self._rook_moves(row, col, color)
+        return moves
+
+    def _king_moves(self, row, col, color):
+        moves = []
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                r, c = row + dr, col + dc
+                if 0 <= r < 8 and 0 <= c < 8:
+                    target_piece = self.get_piece(r, c)
+                    if not target_piece or target_piece[0] != color:
+                        moves.append((r, c))
+        return moves
+
+    def make_move(self, from_pos, to_pos):
+        from_row, from_col = from_pos
+        to_row, to_col = to_pos
+        piece = self.board[from_row][from_col]
+        if piece and piece[0] == self.current_turn:
+            legal_moves = self.get_legal_moves(from_row, from_col)
+            if to_pos in legal_moves:
+                self.board[to_row][to_col] = self.board[from_row][from_col]
+                self.board[from_row][from_col] = None
+                self.current_turn = 'B' if self.current_turn == 'W' else 'W'
+                return True
+        return False
+
+    def is_in_check(self, color):
+        king_pos = None
+        for row in range(8):
+            for col in range(8):
+                if self.board[row][col] == f'{color}K':
+                    king_pos = (row, col)
+                    break
+            if king_pos:
+                break
+
+        opponent_color = 'W' if color == 'B' else 'B'
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece and piece[0] == opponent_color:
+                    if king_pos in self.get_legal_moves(row, col):
+                        return True
+        return False
+
+    def save_game(self, filepath):
+        with open(filepath, 'w') as f:
+            json.dump({'board': self.board, 'current_turn': self.current_turn}, f)
+
+    def load_game(self, filepath):
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+            self.board = data['board']
+            self.current_turn = data['current_turn']

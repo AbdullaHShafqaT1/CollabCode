@@ -89,6 +89,10 @@ def main():
         help="Probe the endpoint health and print the status report without executing tasks"
     )
 
+    parser.add_argument("--resume", action="store_true",
+                        help="Continue the previous run in the workspace from its saved state")
+    parser.add_argument("--compat", choices=["auto", "on", "off"], default="auto",
+                        help="Short-reply compatibility mode: detect from the endpoint, or force on/off")
     parser.add_argument("--max-rounds", type=int, default=None,
                         help="Maximum model responses, including processing the last response")
     args = parser.parse_args()
@@ -114,6 +118,8 @@ def main():
         model=args.model,
         task_prompt=args.prompt,
         max_rounds=args.max_rounds,
+        compat={"auto": None, "on": True, "off": False}[args.compat],
+        resume=args.resume,
     )
     if args.non_interactive:
         return 0 if isinstance(result, dict) and result.get("status") == "COMPLETED" else 1

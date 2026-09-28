@@ -21,3 +21,8 @@ scratch/__pycache__/
 # OS artifacts
 .DS_Store
 Thumbs.db
+
+# Local environment and CloudCode run outputs
+.venv/
+Testing_Chess/
+scratch/logs/

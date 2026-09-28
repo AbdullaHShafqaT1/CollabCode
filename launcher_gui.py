@@ -361,10 +361,18 @@ def run_autonomous_orchestrator(
     logger: Callable[[str], None] = print,
     should_stop: Optional[Callable[[], bool]] = None,
     acceptance: Optional[Dict[str, Any]] = None,
+    compat: Optional[bool] = None,
+    resume: bool = False,
 ) -> Dict[str, Any]:
     """
     Executes the autonomous 2-agent AutoGen execution loop (CoderAgent <-> UserProxyRunner)
     with the 7 NodeCore tools dynamically bound to workspace_root.
+
+    compat: None probes the endpoint and enables compatibility mode (rules folded
+    into each prompt, method-at-a-time files) when it drops system messages,
+    history or max_tokens. resume: continue from the workspace's saved state.
+    Endpoint outages pause the run; saving a new tunnel_url to the config while
+    it waits switches endpoints.
     """
     abs_ws = os.path.abspath(workspace_root)
     os.makedirs(abs_ws, exist_ok=True)
@@ -397,8 +405,18 @@ def run_autonomous_orchestrator(
         workspace_root=abs_ws
     )
 
-    # 4. Start the autonomous AutoGen task
-    logger("\n[*] Starting NodeCore autonomous loop...")
+    # 4. Detect endpoint limitations and prepare outage recovery
+    if compat is None:
+        from node_core.endpoint import probe_capabilities
+        compat = bool(probe_capabilities(base_url, model, logger=logger).get("compat"))
+    config_url_at_start = load_config().get("tunnel_url")
+
+    def resolve_endpoint() -> str:
+        current = load_config().get("tunnel_url")
+        return current if current and current != config_url_at_start else base_url
+
+    # 5. Start the autonomous AutoGen task
+    logger("\n[*] Starting NodeCore autonomous loop..." + (" (resuming saved state)" if resume else ""))
     # This built-in preset has an exact, independently checkable output contract.
     if acceptance is None and task_prompt.strip() == DEFAULT_TASK_PROMPT.strip():
         from node_core.workflow import python_command
@@ -410,7 +428,8 @@ def run_autonomous_orchestrator(
                                        "assert out.getvalue().strip() == 'Hello from NodeCore autonomous runner!'"),
         }]}
     result = orchestrator.start_task(task_prompt, max_rounds=max_rounds,
-                                     should_stop=should_stop, acceptance=acceptance)
+                                     should_stop=should_stop, acceptance=acceptance,
+                                     compat=compat, endpoint_resolver=resolve_endpoint, resume=resume)
     logger(f"\n[*] Execution Finished. Result: {result.get('status')}")
     return result
 
@@ -1608,6 +1627,8 @@ def run_cli_fallback(
     task_prompt: Optional[str] = None,
     non_interactive: bool = False,
     max_rounds: Optional[int] = None,
+    compat: Optional[bool] = None,
+    resume: bool = False,
 ) -> Dict[str, Any]:
     """
     Graceful fallback for headless/terminal environments prompting via standard CLI inputs.
@@ -1661,7 +1682,9 @@ def run_cli_fallback(
         base_url=selected_url,
         task_prompt=selected_prompt,
         model=selected_model,
-        max_rounds=selected_rounds
+        max_rounds=selected_rounds,
+        compat=compat,
+        resume=resume,
     )
 
 
@@ -1677,6 +1700,8 @@ def launch_orchestrator(
     model: Optional[str] = None,
     task_prompt: Optional[str] = None,
     max_rounds: Optional[int] = None,
+    compat: Optional[bool] = None,
+    resume: bool = False,
 ):
     """
     Entrypoint that automatically launches the modern CustomTkinter GUI if possible,
@@ -1690,6 +1715,8 @@ def launch_orchestrator(
             task_prompt=task_prompt,
             non_interactive=non_interactive,
             max_rounds=max_rounds,
+            compat=compat,
+            resume=resume,
         )
 
     try:

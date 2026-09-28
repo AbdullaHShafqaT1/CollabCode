@@ -16,7 +16,7 @@ def test_truncated_document_never_executes_embedded_command(tmp_path):
     text = "```markdown\n# README.md\n```shell\necho unsafe > marker.txt\n```\nUnfinished"
     w = TaskWorkflow(tmp_path, "CLI app", detect_project_profile("CLI app"))
     reply = w.process(text)
-    assert "Incomplete code fence" in reply
+    assert "CONTINUATION REQUIRED" in reply
     assert not (tmp_path / "marker.txt").exists()
     assert not (tmp_path / "README.md").exists()
     assert not w.commands
@@ -35,6 +35,6 @@ def test_document_failure_does_not_hide_generated_test_failure(tmp_path):
         (tmp_path / name).write_text(code)
     w.phase = 4
     reply = w.process("```markdown\n# README.md\n```shell\necho example\n```\nUnfinished")
-    assert "Incomplete code fence" in reply and "AssertionError" in reply
+    assert "CONTINUATION REQUIRED" in reply and "AssertionError" in reply
     assert w.phase == 4 and w.status != "COMPLETED"
     assert any(c["kind"] == "tests" for c in w.commands)
