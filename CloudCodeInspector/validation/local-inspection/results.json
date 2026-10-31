@@ -1,0 +1,47 @@
+[
+  {
+    "case": "broken",
+    "duration_seconds": 48.41,
+    "result": {
+      "status": "INSPECTION_COMPLETE_WITH_GAPS",
+      "workspace": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\targets\\local-validation",
+      "run_dir": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\runs\\20261007-192136-5ae7c4bc",
+      "cycles": [
+        {
+          "cycle": 1,
+          "verified": false,
+          "reasons": [
+            "R1: The function add(a,b) in app.py is implemented as return a - b, which subtracts b from a instead of adding them. The check failed because add(2,3) returned -1 instead of 5.",
+            "The add(a,b) function is incorrectly implemented as subtraction instead of addition.",
+            "Independent check addition failed",
+            "No passing independent acceptance evidence for R1"
+          ],
+          "folder": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\runs\\20261007-192136-5ae7c4bc\\cycle-1"
+        }
+      ],
+      "original_prompt_sha256": "e9a25334a7b0132172368ba10488984ee7a547ba44752dc415628ff03a291901",
+      "cloud_coding_attempted": false,
+      "scope": "configured requirements; model interpretation is fallible"
+    }
+  },
+  {
+    "case": "repaired",
+    "duration_seconds": 28.53,
+    "result": {
+      "status": "VERIFIED_FOR_CONFIGURED_REQUIREMENTS",
+      "workspace": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\targets\\local-validation",
+      "run_dir": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\runs\\20261007-192225-897173d1",
+      "cycles": [
+        {
+          "cycle": 1,
+          "verified": true,
+          "reasons": [],
+          "folder": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\runs\\20261007-192225-897173d1\\cycle-1"
+        }
+      ],
+      "original_prompt_sha256": "e9a25334a7b0132172368ba10488984ee7a547ba44752dc415628ff03a291901",
+      "cloud_coding_attempted": false,
+      "scope": "configured requirements; model interpretation is fallible"
+    }
+  }
+]

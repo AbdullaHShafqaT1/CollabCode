@@ -1,0 +1,9 @@
+pyautogen==0.2.35
+openai>=1.30,<2
+pydantic>=2,<3
+aiofiles>=23.2.1
+structlog>=24.2.0
+chardet>=5.2
+requests>=2.31
+playwright>=1.48,<2
+pytest>=8,<9

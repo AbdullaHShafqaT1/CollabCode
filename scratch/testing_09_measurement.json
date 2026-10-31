@@ -1,0 +1,299 @@
+{
+  "tests_run": 20,
+  "passed": false,
+  "unchanged": true,
+  "checker_sha256": "9f1e948334c5bee30f5bacf84cd128e0142eb37ac5c0d374ef30f0c516920bcf",
+  "tests": {
+    "independent_chess_acceptance.EngineAcceptance.test_01_initial_position": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 71, in test_01_initial_position\n    self.compare(game, chess.Board())\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5[231 chars] 'r'} != {'h8': 'r', 'g8': 'n', 'f8': 'b', 'e8': 'k[305 chars] 'R'}\nDiff is 861 characters long. Set self.maxDiff to None to see it. : pieces\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_02_all_piece_legal_sets": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5[231 chars] 'r'} != {'h8': 'r', 'g8': 'n', 'f8': 'b', 'e8': 'k[305 chars] 'R'}\nDiff is 861 characters long. Set self.maxDiff to None to see it. : pieces\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {4: 'K', 27: 'Q', 60: 'k'} != {'e8': 'k', 'd4': 'Q', 'e1': 'K'}\n- {4: 'K', 27: 'Q', 60: 'k'}\n+ {'d4': 'Q', 'e1': 'K', 'e8': 'k'} : pieces\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {4: 'K', 27: 'R', 60: 'k'} != {'e8': 'k', 'd4': 'R', 'e1': 'K'}\n- {4: 'K', 27: 'R', 60: 'k'}\n+ {'d4': 'R', 'e1': 'K', 'e8': 'k'} : pieces\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {4: 'K', 27: 'B', 60: 'k'} != {'e8': 'k', 'd4': 'B', 'e1': 'K'}\n- {4: 'K', 27: 'B', 60: 'k'}\n+ {'d4': 'B', 'e1': 'K', 'e8': 'k'} : pieces\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {4: 'K', 27: 'N', 60: 'k'} != {'e8': 'k', 'd4': 'N', 'e1': 'K'}\n- {4: 'K', 27: 'N', 60: 'k'}\n+ {'d4': 'N', 'e1': 'K', 'e8': 'k'} : pieces\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {4: 'K', 27: 'P', 60: 'k'} != {'e8': 'k', 'd4': 'P', 'e1': 'K'}\n- {4: 'K', 27: 'P', 60: 'k'}\n+ {'d4': 'P', 'e1': 'K', 'e8': 'k'} : pieces\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_03_turn_enforcement": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_04_illegal_and_malformed_moves": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_05_captures_and_move_sequence": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 106, in test_05_captures_and_move_sequence\n    self.compare(game, oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5[231 chars] 'r'} != {'h8': 'r', 'g8': 'n', 'f8': 'b', 'e8': 'k[305 chars] 'R'}\nDiff is 862 characters long. Set self.maxDiff to None to see it. : pieces\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_06_king_safety": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_07_pinned_piece": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 117, in test_07_pinned_piece\n    self.assertEqual(game.state()[\"pieces\"].get(\"e8\"), \"R\")\nAssertionError: None != 'R'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_08_check": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_09_checkmate_and_postgame_rejection": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_10_stalemate": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_11_castling": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 143, in test_11_castling\n    self.compare(game, oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {0: 'R', 5: 'R', 6: 'K', 56: 'r', 60: 'k', 63: 'r'} != {'h8': 'r', 'e8': 'k', 'a8': 'r', 'g1': 'K', 'f1': 'R', 'a1': 'R'}\n- {0: 'R', 5: 'R', 6: 'K', 56: 'r', 60: 'k', 63: 'r'}\n+ {'a1': 'R', 'a8': 'r', 'e8': 'k', 'f1': 'R', 'g1': 'K', 'h8': 'r'} : pieces\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_12_castling_restrictions": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_13_en_passant": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 157, in test_13_en_passant\n    self.compare(game, oracle)\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5[222 chars] 'r'} != {'h8': 'r', 'g8': 'n', 'f8': 'b', 'e8': 'k[294 chars] 'R'}\nDiff is 820 characters long. Set self.maxDiff to None to see it. : pieces\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_14_en_passant_expires": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_15_all_promotions": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 172, in test_15_all_promotions\n    self.assertEqual(game.state()[\"pieces\"][\"a8\"], piece.upper())\n                     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^\nKeyError: 'a8'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_16_reset": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 178, in test_16_reset\n    self.compare(game, chess.Board())\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 61, in compare\n    self.assertEqual(value, expected[key], key)\nAssertionError: {0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5[231 chars] 'r'} != {'h8': 'r', 'g8': 'n', 'f8': 'b', 'e8': 'k[305 chars] 'R'}\nDiff is 861 characters long. Set self.maxDiff to None to see it. : pieces\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_draw_handling": {
+      "status": "passed",
+      "details": []
+    },
+    "independent_chess_acceptance.InterfaceAcceptance.test_17_18_real_browser_playthrough_and_launch": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 231, in test_17_18_real_browser_playthrough_and_launch\n    page.wait_for_selector('#sq-e2[data-piece=\"P\"]')\n  File \"C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\.cache\\diagnostic-venv\\Lib\\site-packages\\playwright\\sync_api\\_generated.py\", line 9061, in wait_for_selector\n    self._sync(\n  File \"C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\.cache\\diagnostic-venv\\Lib\\site-packages\\playwright\\_impl\\_sync_base.py\", line 115, in _sync\n    return task.result()\n           ^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\.cache\\diagnostic-venv\\Lib\\site-packages\\playwright\\_impl\\_page.py\", line 429, in wait_for_selector\n    return await self._main_frame.wait_for_selector(**locals_to_params(locals()))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\.cache\\diagnostic-venv\\Lib\\site-packages\\playwright\\_impl\\_frame.py\", line 395, in wait_for_selector\n    await self._channel.send(\n  File \"C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\.cache\\diagnostic-venv\\Lib\\site-packages\\playwright\\_impl\\_connection.py\", line 76, in send\n    return await self._connection.wrap_api_call(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\.cache\\diagnostic-venv\\Lib\\site-packages\\playwright\\_impl\\_connection.py\", line 632, in wrap_api_call\n    raise rewrite_error(error, f\"{parsed_st['apiName']}: {error}\") from None\nplaywright._impl._errors.TimeoutError: Page.wait_for_selector: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator(\"#sq-e2[data-piece=\\\"P\\\"]\") to be visible\n\n"
+      ]
+    },
+    "independent_chess_acceptance.InterfaceAcceptance.test_19_documentation_and_generated_tests": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 298, in test_19_documentation_and_generated_tests\n    content = (WORKSPACE / name).read_text(encoding=\"utf-8\")\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\Acer\\\\Desktop\\\\projects\\\\tests\\\\Testing-0.9\\\\RunningGUIDE.txt'\n"
+      ]
+    },
+    "independent_chess_acceptance.InterfaceAcceptance.test_http_rejection_and_reset": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 294, in test_http_rejection_and_reset\n    self.assertEqual(http(base, \"/reset\", {})[1], initial)\nAssertionError: {'error': 'Invalid request'} != {'fen': 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP[604 chars]None}\nDiff is 1496 characters long. Set self.maxDiff to None to see it.\n"
+      ]
+    }
+  },
+  "functional": {
+    "matrix_version": 2,
+    "requirements": [
+      {
+        "requirement": "Initial 32-piece position and JSON state",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Legal movement for all six piece types",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Two human players and turn enforcement",
+        "status": "verified",
+        "evidence": "test_03_turn_enforcement"
+      },
+      {
+        "requirement": "Illegal/malformed moves rejected without mutation",
+        "status": "verified",
+        "evidence": "test_04_illegal_and_malformed_moves"
+      },
+      {
+        "requirement": "Captures and persistent move sequence",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "King safety",
+        "status": "verified",
+        "evidence": "test_06_king_safety"
+      },
+      {
+        "requirement": "Pinned pieces",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Check detection",
+        "status": "verified",
+        "evidence": "test_08_check"
+      },
+      {
+        "requirement": "Checkmate, winner and postgame rejection",
+        "status": "verified",
+        "evidence": "test_09_checkmate_and_postgame_rejection"
+      },
+      {
+        "requirement": "Stalemate",
+        "status": "verified",
+        "evidence": "test_10_stalemate"
+      },
+      {
+        "requirement": "Both sides' kingside/queenside castling",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Castling restrictions",
+        "status": "verified",
+        "evidence": "test_12_castling_restrictions"
+      },
+      {
+        "requirement": "En passant capture",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "En passant expiration",
+        "status": "verified",
+        "evidence": "test_14_en_passant_expires"
+      },
+      {
+        "requirement": "All four engine promotion choices",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Engine reset",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Fifty-move and insufficient-material draws",
+        "status": "verified",
+        "evidence": "test_draw_handling"
+      },
+      {
+        "requirement": "Claimable repetition draw",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Real documented CLI launch",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Visible 8x8 alternating board and 32 pieces",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "All pieces rendered with Unicode chess symbols",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Selection and legal-destination highlighting",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser two-player moves, capture and turn updates",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser new game resets position",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser checkmate status",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Winner visibly identified in browser",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser promotion choice and draw display",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser check and stalemate displays",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Piece accessible labels and two-player instructions",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "HTTP state, move, error JSON and reset",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "HTTP position load through the same engine",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Bounded HTTP request sizes and bad JSON handling",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Each server owns a fresh game",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Import without starting servers/windows",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "No network assets or CDN",
+        "status": "unverified",
+        "evidence": null
+      }
+    ],
+    "verified": 9,
+    "total": 35,
+    "percent": 25.71,
+    "method": "Equal-weight functional requirement groups fixed before generation; no file-count credit. Failed grouped tests receive no partial credit. Documentation/generated tests reported separately."
+  }
+}

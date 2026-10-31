@@ -1,0 +1,70 @@
+{
+  "status": "passed",
+  "assertions": [
+    {
+      "selector": "#count",
+      "kind": "text",
+      "expected": "1",
+      "passed": true,
+      "actual": "1"
+    }
+  ],
+  "page_errors": [],
+  "actions": [
+    {
+      "step": 1,
+      "thought": "The task is to increment the count exactly once and then stop. The current count is 0, so clicking the 'Increment' button will increase the count to 1.",
+      "action": "click",
+      "parameters": {
+        "target": "Increment"
+      },
+      "is_completed": true,
+      "completion_summary": null,
+      "subgoals_completed": [],
+      "subgoals_remaining": [
+        "0"
+      ],
+      "objective_complete": true,
+      "model_request": {
+        "provider": "ollama",
+        "model": "qwen2.5vl:3b",
+        "ollama_url": "http://127.0.0.1:11434",
+        "image_count": 1,
+        "valid_json": true,
+        "duration_sec": 1.2149717807769775,
+        "status_code": 200,
+        "eval_duration_sec": 0.757293,
+        "prompt_eval_count": 1388,
+        "eval_count": 87
+      },
+      "screenshot": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\validation\\vision-1791454136\\screen-1\\step-1.png",
+      "result": "action executed"
+    }
+  ],
+  "screenshot": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\validation\\vision-1791454136\\screen-1\\final.png",
+  "checkpoints_reached": [
+    {
+      "selector": "#count",
+      "expected": "0",
+      "actual": "0",
+      "after_actions": 0
+    },
+    {
+      "selector": "#count",
+      "expected": "1",
+      "actual": "1",
+      "after_actions": 1
+    }
+  ],
+  "checkpoints_expected": [
+    {
+      "selector": "#count",
+      "expected": "0"
+    },
+    {
+      "selector": "#count",
+      "expected": "1"
+    }
+  ],
+  "verification": "configured assertions; model completion is not sufficient"
+}

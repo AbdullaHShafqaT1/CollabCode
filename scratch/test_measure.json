@@ -1,0 +1,317 @@
+{
+  "tests_run": 20,
+  "passed": false,
+  "unchanged": true,
+  "checker_sha256": "9f1e948334c5bee30f5bacf84cd128e0142eb37ac5c0d374ef30f0c516920bcf",
+  "tests": {
+    "independent_chess_acceptance.EngineAcceptance.test_01_initial_position": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 70, in test_01_initial_position\n    game = self.game()\n           ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_02_all_piece_legal_sets": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n                 ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n                 ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n                 ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n                 ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n                 ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n",
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 87, in test_02_all_piece_legal_sets\n    self.compare(self.game(fen), oracle)\n                 ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_03_turn_enforcement": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 90, in test_03_turn_enforcement\n    game = self.game()\n           ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_04_illegal_and_malformed_moves": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 96, in test_04_illegal_and_malformed_moves\n    game = self.game()\n           ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_05_captures_and_move_sequence": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 102, in test_05_captures_and_move_sequence\n    game, oracle = self.game(), chess.Board()\n                   ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_06_king_safety": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 110, in test_06_king_safety\n    game = self.game(\"4k3/8/8/8/8/8/4r3/4K3 w - - 0 1\")\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_07_pinned_piece": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 114, in test_07_pinned_piece\n    game = self.game(\"k3r3/8/8/8/8/8/4R3/4K3 w - - 0 1\")\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_08_check": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 120, in test_08_check\n    game = self.game(\"4k3/8/8/8/8/8/4r3/4K3 w - - 0 1\")\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_09_checkmate_and_postgame_rejection": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 124, in test_09_checkmate_and_postgame_rejection\n    game = self.game()\n           ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_10_stalemate": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 133, in test_10_stalemate\n    game = self.game(\"7k/5Q2/6K1/8/8/8/8/8 b - - 0 1\")\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_11_castling": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 140, in test_11_castling\n    game, oracle = self.game(fen), chess.Board(fen)\n                   ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_12_castling_restrictions": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 150, in test_12_castling_restrictions\n    self.reject(self.game(fen), \"e1g1\")\n                ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_13_en_passant": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 153, in test_13_en_passant\n    game, oracle = self.game(), chess.Board()\n                   ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_14_en_passant_expires": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 162, in test_14_en_passant_expires\n    game = self.game()\n           ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_15_all_promotions": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 170, in test_15_all_promotions\n    game = self.game(fen)\n           ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_16_reset": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 175, in test_16_reset\n    game = self.game()\n           ^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.EngineAcceptance.test_draw_handling": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 181, in test_draw_handling\n    self.assertEqual(self.game(\"7k/8/8/8/8/8/8/K7 w - - 0 1\").state()[\"status\"], \"draw\")\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 55, in game\n    return importlib.import_module(\"chess_logic\").Game(fen)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\importlib\\__init__.py\", line 90, in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen importlib._bootstrap>\", line 1387, in _gcd_import\n  File \"<frozen importlib._bootstrap>\", line 1360, in _find_and_load\n  File \"<frozen importlib._bootstrap>\", line 1324, in _find_and_load_unlocked\nModuleNotFoundError: No module named 'chess_logic'\n"
+      ]
+    },
+    "independent_chess_acceptance.InterfaceAcceptance.test_17_18_real_browser_playthrough_and_launch": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 224, in test_17_18_real_browser_playthrough_and_launch\n    with launched_app() as base, sync_playwright() as pw:\n         ^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\contextlib.py\", line 137, in __enter__\n    return next(self.gen)\n           ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 200, in launched_app\n    raise AssertionError(f\"Documented launch exited {proc.returncode}; see chess-launch.log\")\nAssertionError: Documented launch exited 2; see chess-launch.log\n"
+      ]
+    },
+    "independent_chess_acceptance.InterfaceAcceptance.test_19_documentation_and_generated_tests": {
+      "status": "error",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 298, in test_19_documentation_and_generated_tests\n    content = (WORKSPACE / name).read_text(encoding=\"utf-8\")\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\Acer\\\\Desktop\\\\projects\\\\tests\\\\Testing-0.9\\\\README.md'\n"
+      ]
+    },
+    "independent_chess_acceptance.InterfaceAcceptance.test_http_rejection_and_reset": {
+      "status": "failed",
+      "details": [
+        "Traceback (most recent call last):\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 287, in test_http_rejection_and_reset\n    with launched_app() as base:\n         ^^^^^^^^^^^^^^\n  File \"C:\\Users\\Acer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib\\contextlib.py\", line 137, in __enter__\n    return next(self.gen)\n           ^^^^^^^^^^^^^^\n  File \"benchmark_outputs\\Testing-0.8\\chess_acceptance.py\", line 200, in launched_app\n    raise AssertionError(f\"Documented launch exited {proc.returncode}; see chess-launch.log\")\nAssertionError: Documented launch exited 2; see chess-launch.log\n"
+      ]
+    }
+  },
+  "functional": {
+    "matrix_version": 2,
+    "requirements": [
+      {
+        "requirement": "Initial 32-piece position and JSON state",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Legal movement for all six piece types",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Two human players and turn enforcement",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Illegal/malformed moves rejected without mutation",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Captures and persistent move sequence",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "King safety",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Pinned pieces",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Check detection",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Checkmate, winner and postgame rejection",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Stalemate",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Both sides' kingside/queenside castling",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Castling restrictions",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "En passant capture",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "En passant expiration",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "All four engine promotion choices",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Engine reset",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Fifty-move and insufficient-material draws",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Claimable repetition draw",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Real documented CLI launch",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Visible 8x8 alternating board and 32 pieces",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "All pieces rendered with Unicode chess symbols",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Selection and legal-destination highlighting",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser two-player moves, capture and turn updates",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser new game resets position",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser checkmate status",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Winner visibly identified in browser",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser promotion choice and draw display",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Browser check and stalemate displays",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Piece accessible labels and two-player instructions",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "HTTP state, move, error JSON and reset",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "HTTP position load through the same engine",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Bounded HTTP request sizes and bad JSON handling",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Each server owns a fresh game",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "Import without starting servers/windows",
+        "status": "unverified",
+        "evidence": null
+      },
+      {
+        "requirement": "No network assets or CDN",
+        "status": "unverified",
+        "evidence": null
+      }
+    ],
+    "verified": 0,
+    "total": 35,
+    "percent": 0.0,
+    "method": "Equal-weight functional requirement groups fixed before generation; no file-count credit. Failed grouped tests receive no partial credit. Documentation/generated tests reported separately."
+  }
+}

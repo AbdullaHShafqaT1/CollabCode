@@ -1,0 +1,105 @@
+{
+  "local": {
+    "base_url": "http://127.0.0.1:11434",
+    "inspection_model": "qwen3:8b",
+    "vision_model": "qwen2.5vl:3b",
+    "timeout": 120,
+    "num_ctx": 16384,
+    "num_predict": 4096
+  },
+  "screen": {
+    "enabled": true,
+    "entry": "index.html",
+    "max_steps": 3,
+    "cases": [
+      {
+        "id": "increment",
+        "requirements": [
+          "R1"
+        ],
+        "goal": "Confirm the initial count is zero. Click Increment exactly once, then stop.",
+        "checkpoints": [
+          {
+            "selector": "#count",
+            "expected": "0"
+          },
+          {
+            "selector": "#count",
+            "expected": "1"
+          }
+        ],
+        "assertions": [
+          {
+            "selector": "#count",
+            "kind": "text",
+            "expected": "1"
+          }
+        ]
+      },
+      {
+        "id": "reset",
+        "requirements": [
+          "R2"
+        ],
+        "goal": "Click Increment twice, then click Reset once. Stop after Reset.",
+        "checkpoints": [
+          {
+            "selector": "#count",
+            "expected": "0"
+          },
+          {
+            "selector": "#count",
+            "expected": "1"
+          },
+          {
+            "selector": "#count",
+            "expected": "2"
+          },
+          {
+            "selector": "#count",
+            "expected": "0"
+          }
+        ],
+        "assertions": [
+          {
+            "selector": "#count",
+            "kind": "text",
+            "expected": "0"
+          }
+        ]
+      }
+    ]
+  },
+  "workspace": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\CloudCodeInspector\\targets\\vision-validation",
+  "case": {
+    "id": "increment",
+    "requirements": [
+      "R1"
+    ],
+    "goal": "Confirm the initial count is zero. Click Increment exactly once, then stop.",
+    "checkpoints": [
+      {
+        "selector": "#count",
+        "expected": "0"
+      },
+      {
+        "selector": "#count",
+        "expected": "1"
+      }
+    ],
+    "assertions": [
+      {
+        "selector": "#count",
+        "kind": "text",
+        "expected": "1"
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "requirement": "R1",
+      "case_id": "increment",
+      "doubt": "Controlled validation: source inspection alone has not established that clicking Increment updates the visible counter."
+    }
+  ]
+}

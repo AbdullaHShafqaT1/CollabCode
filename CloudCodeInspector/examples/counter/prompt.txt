@@ -1,0 +1,1 @@
+Build a browser counter in index.html. The initial count is zero. A button labelled Increment increases the visible count by exactly one. A button labelled Reset returns the count to zero. Keep it runnable as a static web page.

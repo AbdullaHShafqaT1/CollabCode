@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+config.json
+targets/
+runs/
+validation/*.log
+.env

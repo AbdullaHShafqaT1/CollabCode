@@ -471,14 +471,15 @@ class TaskWorkflow:
         Missing files are still reported as errors — acceptance criteria are unchanged.
         """
         before = self.snapshot()
-        names = [self.profile[k] for k in ("logic", "gui", "main", "tests")]
+        names = [self.profile[k] for k in ("logic", "gui", "main", "tests") if self.profile.get(k)]
         if final:
-            names += [self.profile["guide"], *self.required_files]
+            names += [self.profile.get("guide", "RunningGUIDE.txt"), *self.required_files]
+            names = [n for n in names if n]
         file_errs = self.file_errors(names) + self.criteria_errors()
         errors = list(file_errs)
 
         # FIX 3: Determine which files exist so we can still check them
-        existing_names = [n for n in names if self.path(n).is_file()]
+        existing_names = [n for n in names if n and self.path(n).is_file()]
         existing_py = [n for n in existing_names if n.endswith('.py')]
 
         # Run test suite if the test file exists (even if other files are missing)
@@ -1875,8 +1876,8 @@ class TaskWorkflow:
         """
         existing_files = sorted(f for f in self.snapshot().keys()
                                 if not f.startswith(".") and not f.startswith("nodelog_data"))
-        phase_files = [self.profile[k] for k in ("logic", "gui", "tests", "main", "guide")]
-        missing_files = [f for f in phase_files if not self.path(f).is_file()]
+        phase_files = [self.profile[k] for k in ("logic", "gui", "tests", "main", "guide") if self.profile.get(k)]
+        missing_files = [f for f in phase_files if f and not self.path(f).is_file()]
 
         # FIX 9: Separate blocking errors (dependency/import) from file-level errors
         dep_errors = [e for e in errors if "not installed" in e.lower() or "missing dependency" in e.lower()
@@ -1946,11 +1947,11 @@ class TaskWorkflow:
         return "\n".join(parts)
 
     def report(self):
-        phase_files = ["hello.py"] if self.single_file else [self.profile[k] for k in ("logic", "gui", "tests", "main", "guide")]
-        expected = list(dict.fromkeys(phase_files + self.required_files))
+        phase_files = ["hello.py"] if self.single_file else [self.profile[k] for k in ("logic", "gui", "tests", "main", "guide") if self.profile.get(k)]
+        expected = [f for f in dict.fromkeys(phase_files + self.required_files) if f]
         remaining = list(self.remaining)
         if self.status != "COMPLETED":
-            remaining += [f"Missing deliverable: {name}" for name in expected if not self.path(name).is_file()]
+            remaining += [f"Missing deliverable: {name}" for name in expected if name and not self.path(name).is_file()]
             remaining += [check["requirement"] for check in self.checks
                           if not any(c["kind"] == "acceptance" and c["requirement"] == check["requirement"]
                                      and c["status"] == "success" and c["exit_code"] == 0

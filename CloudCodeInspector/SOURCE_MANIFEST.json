@@ -1,0 +1,275 @@
+[
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\agents.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\agents.py",
+    "source_sha256": "1b9f729bdfd5c6348e1898b77d56d7222c2efb3f2fadd5201c199d5dcd446e8f",
+    "copied_sha256": "1b9f729bdfd5c6348e1898b77d56d7222c2efb3f2fadd5201c199d5dcd446e8f",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\behavior_trace.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\behavior_trace.py",
+    "source_sha256": "33a4860096ef044410e1849846035532771e680d14e55c009634884e241a5982",
+    "copied_sha256": "33a4860096ef044410e1849846035532771e680d14e55c009634884e241a5982",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\codemap.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\codemap.py",
+    "source_sha256": "d27304113ef4364f71c9b4ae3eb81f89d9ba0eb35d0a6efb4bb0d8e39e5d1a69",
+    "copied_sha256": "d27304113ef4364f71c9b4ae3eb81f89d9ba0eb35d0a6efb4bb0d8e39e5d1a69",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\conventions.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\conventions.py",
+    "source_sha256": "543d68338b29d245fd2c20a728dd6438d405185e7b5d5be742afd7565fe60099",
+    "copied_sha256": "543d68338b29d245fd2c20a728dd6438d405185e7b5d5be742afd7565fe60099",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\core.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\core.py",
+    "source_sha256": "4116c86efae10195887054042472146b9f118a28905c3047dfefd3ecbbc1796f",
+    "copied_sha256": "4116c86efae10195887054042472146b9f118a28905c3047dfefd3ecbbc1796f",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\endpoint.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\endpoint.py",
+    "source_sha256": "a5cf46402803031fbfa889fdccc8357012f9dc341f05911119ebc0597955e8c0",
+    "copied_sha256": "a5cf46402803031fbfa889fdccc8357012f9dc341f05911119ebc0597955e8c0",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\incremental.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\incremental.py",
+    "source_sha256": "f3aef8c8430f252049d3f271f1dc9cc650ac6c6c04c8a626d7fa9ac7718001c2",
+    "copied_sha256": "f3aef8c8430f252049d3f271f1dc9cc650ac6c6c04c8a626d7fa9ac7718001c2",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\schemas.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\schemas.py",
+    "source_sha256": "a001573cc411f99859fc19ff270c189c8ab308ce13a343cb4e66ba9af8c92f2f",
+    "copied_sha256": "a001573cc411f99859fc19ff270c189c8ab308ce13a343cb4e66ba9af8c92f2f",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\tools.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\tools.py",
+    "source_sha256": "ba4c4d527c30ec3c3d37a78fe5145b270c239f0607cf468ce2fabfce8481c15b",
+    "copied_sha256": "ba4c4d527c30ec3c3d37a78fe5145b270c239f0607cf468ce2fabfce8481c15b",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\verification_runner.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\verification_runner.py",
+    "source_sha256": "b702b092588c174a861f880b6bdba489ba63fb2595ca6bb8943f027fbefb31b5",
+    "copied_sha256": "b702b092588c174a861f880b6bdba489ba63fb2595ca6bb8943f027fbefb31b5",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\workflow.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\workflow.py",
+    "source_sha256": "5944eddfcb075ca440f20bc1096b5f4d8777dc883d1177c1c34eb1783843c9b6",
+    "copied_sha256": "5944eddfcb075ca440f20bc1096b5f4d8777dc883d1177c1c34eb1783843c9b6",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeCore\\node_core\\__init__.py",
+    "destination": "vendor\\cloudcode\\NodeCore\\node_core\\__init__.py",
+    "source_sha256": "d8bd5f0c0b735de1d8a6eafef0351b3183610d685ba1672732e814a20974c79e",
+    "copied_sha256": "d8bd5f0c0b735de1d8a6eafef0351b3183610d685ba1672732e814a20974c79e",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeForge\\tools\\file_writer_tool.py",
+    "destination": "vendor\\cloudcode\\NodeForge\\tools\\file_writer_tool.py",
+    "source_sha256": "57892b948e9a3ecadae48781fff6a00123d1198e3e7127b54bac24d3dd6d99e7",
+    "copied_sha256": "57892b948e9a3ecadae48781fff6a00123d1198e3e7127b54bac24d3dd6d99e7",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeForge\\tools\\unified_patch.py",
+    "destination": "vendor\\cloudcode\\NodeForge\\tools\\unified_patch.py",
+    "source_sha256": "3d97f4d9b894c7f6d6b6be7dda29294c128b386f07ce926a5bdc5ec65f91ae42",
+    "copied_sha256": "3d97f4d9b894c7f6d6b6be7dda29294c128b386f07ce926a5bdc5ec65f91ae42",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeForge\\tools\\__init__.py",
+    "destination": "vendor\\cloudcode\\NodeForge\\tools\\__init__.py",
+    "source_sha256": "4a057470c66ef0c57b0a23c47427db04d588f3954237a11359298f8c74ae3f00",
+    "copied_sha256": "4a057470c66ef0c57b0a23c47427db04d588f3954237a11359298f8c74ae3f00",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeInsight\\file_reader_tool\\file_reader_tool.py",
+    "destination": "vendor\\cloudcode\\NodeInsight\\file_reader_tool\\file_reader_tool.py",
+    "source_sha256": "88ba247592012ac64f2c75c9d96f161e7580a5a674987c458642e22bfa728919",
+    "copied_sha256": "88ba247592012ac64f2c75c9d96f161e7580a5a674987c458642e22bfa728919",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeInsight\\file_reader_tool\\models.py",
+    "destination": "vendor\\cloudcode\\NodeInsight\\file_reader_tool\\models.py",
+    "source_sha256": "132bc3823e1e1be374212f7b786c671c5d591b037d8893aefa26c6735ad78bd6",
+    "copied_sha256": "132bc3823e1e1be374212f7b786c671c5d591b037d8893aefa26c6735ad78bd6",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeInsight\\file_reader_tool\\__init__.py",
+    "destination": "vendor\\cloudcode\\NodeInsight\\file_reader_tool\\__init__.py",
+    "source_sha256": "8141e593f3664b707b376352f84a8ee8b377a3c4327c50c796123e19ed77dac9",
+    "copied_sha256": "8141e593f3664b707b376352f84a8ee8b377a3c4327c50c796123e19ed77dac9",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodePulse\\process_job.py",
+    "destination": "vendor\\cloudcode\\NodePulse\\process_job.py",
+    "source_sha256": "d28f09dcd3b67c46b2c6449461ed821c7717836ebfbe90459c7b38b673fe6de3",
+    "copied_sha256": "d28f09dcd3b67c46b2c6449461ed821c7717836ebfbe90459c7b38b673fe6de3",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodePulse\\terminal_executor.py",
+    "destination": "vendor\\cloudcode\\NodePulse\\terminal_executor.py",
+    "source_sha256": "64630d93a2183ab837c6a551b0d86723451fb48b245a3e3fdea807b815195869",
+    "copied_sha256": "64630d93a2183ab837c6a551b0d86723451fb48b245a3e3fdea807b815195869",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLog\\nodelog\\core.py",
+    "destination": "vendor\\cloudcode\\NodeLog\\nodelog\\core.py",
+    "source_sha256": "a801018b2f46da6a59a19c5d86a2f87aecd15d040abd923c4f568f02873ec968",
+    "copied_sha256": "a801018b2f46da6a59a19c5d86a2f87aecd15d040abd923c4f568f02873ec968",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLog\\nodelog\\models.py",
+    "destination": "vendor\\cloudcode\\NodeLog\\nodelog\\models.py",
+    "source_sha256": "b5c4a566856a95c9588046eebc0df190ff71eaf1654582a729b8edcb533ac23d",
+    "copied_sha256": "b5c4a566856a95c9588046eebc0df190ff71eaf1654582a729b8edcb533ac23d",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLog\\nodelog\\sanitizer.py",
+    "destination": "vendor\\cloudcode\\NodeLog\\nodelog\\sanitizer.py",
+    "source_sha256": "7b495240ea8464c0807313ee0d84360476b4b34f1ea3d24d63d45e9b80487585",
+    "copied_sha256": "7b495240ea8464c0807313ee0d84360476b4b34f1ea3d24d63d45e9b80487585",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLog\\nodelog\\__init__.py",
+    "destination": "vendor\\cloudcode\\NodeLog\\nodelog\\__init__.py",
+    "source_sha256": "5fc3414db5265fed627f0c050c30e711d144a5dfd1003539e0fd6e48b53efbd4",
+    "copied_sha256": "5fc3414db5265fed627f0c050c30e711d144a5dfd1003539e0fd6e48b53efbd4",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\auth_manager.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\auth_manager.py",
+    "source_sha256": "9d5c85c3e6273d5eac0d32a7bc8b94ab43d1409bb8498e900cf62f9b215b6b3a",
+    "copied_sha256": "9d5c85c3e6273d5eac0d32a7bc8b94ab43d1409bb8498e900cf62f9b215b6b3a",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\gateway.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\gateway.py",
+    "source_sha256": "be59236761a71a160fc11147823f11e5ea0cb2e32fab88438fe0bee48ba9fa53",
+    "copied_sha256": "be59236761a71a160fc11147823f11e5ea0cb2e32fab88438fe0bee48ba9fa53",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\models.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\models.py",
+    "source_sha256": "d56ab8ff750c830e038bc55e65697f161e2df8393eceb2af76ee0c8555283b93",
+    "copied_sha256": "d56ab8ff750c830e038bc55e65697f161e2df8393eceb2af76ee0c8555283b93",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\nodelog_stub.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\nodelog_stub.py",
+    "source_sha256": "f339755c868c4b889529b91ca7220229dd7e401af43ec003870d1a9cf0c6524a",
+    "copied_sha256": "f339755c868c4b889529b91ca7220229dd7e401af43ec003870d1a9cf0c6524a",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\sync_manager.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\sync_manager.py",
+    "source_sha256": "dc197ae5e5eda6d69a4aef9399ba2542ea6f10bb7fd6b055c96d32582c017592",
+    "copied_sha256": "dc197ae5e5eda6d69a4aef9399ba2542ea6f10bb7fd6b055c96d32582c017592",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\tunnel_engine.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\tunnel_engine.py",
+    "source_sha256": "5cad16767a1a7fe5b22a46652f3f93eeca01136cb4ba08903ce10d62c857b8e6",
+    "copied_sha256": "5cad16767a1a7fe5b22a46652f3f93eeca01136cb4ba08903ce10d62c857b8e6",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\__init__.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\__init__.py",
+    "source_sha256": "c2665bb553e8e188d711b2433f6ac9e3229dc17dd718acd19a98822ef86f03f7",
+    "copied_sha256": "c2665bb553e8e188d711b2433f6ac9e3229dc17dd718acd19a98822ef86f03f7",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\adapters\\base_adapter.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\adapters\\base_adapter.py",
+    "source_sha256": "602af67cd9678b6e8774b6d719880b846968bc5b98e464e221cc2bc7c385f5a5",
+    "copied_sha256": "602af67cd9678b6e8774b6d719880b846968bc5b98e464e221cc2bc7c385f5a5",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\adapters\\colab_adapter.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\adapters\\colab_adapter.py",
+    "source_sha256": "c624b0cc778b9b0def43515ffc8fc09017e90659e92b81e8c2a94574db7bd1f6",
+    "copied_sha256": "c624b0cc778b9b0def43515ffc8fc09017e90659e92b81e8c2a94574db7bd1f6",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\adapters\\generic_rest.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\adapters\\generic_rest.py",
+    "source_sha256": "dac442019a28cff1999bf043dfe5519b4729db640a835862e92dabcaf151f89e",
+    "copied_sha256": "dac442019a28cff1999bf043dfe5519b4729db640a835862e92dabcaf151f89e",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\adapters\\kaggle_adapter.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\adapters\\kaggle_adapter.py",
+    "source_sha256": "9a567c2718ff2e43434e0ff6bd7c4f2dacc5d058bd27a98c01b4a429abd33e27",
+    "copied_sha256": "9a567c2718ff2e43434e0ff6bd7c4f2dacc5d058bd27a98c01b4a429abd33e27",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\cloud Bridge Projects\\CloudCode\\NodeLink\\nodelink\\adapters\\__init__.py",
+    "destination": "vendor\\cloudcode\\NodeLink\\nodelink\\adapters\\__init__.py",
+    "source_sha256": "e7d281e56e4ae1325e50bfd42642ebfc871caa07472a807bba2aca927a3e79a1",
+    "copied_sha256": "e7d281e56e4ae1325e50bfd42642ebfc871caa07472a807bba2aca927a3e79a1",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\ScreenControlProjects\\Test1\\core\\agent_planner.py",
+    "destination": "vendor\\screencontrol\\reference\\agent_planner.py",
+    "source_sha256": "97963dee304cdcaf28d39fc0bf00459de21fb08ecf99dd49e56efcef499c4c40",
+    "copied_sha256": "97963dee304cdcaf28d39fc0bf00459de21fb08ecf99dd49e56efcef499c4c40",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\ScreenControlProjects\\Test1\\core\\models.py",
+    "destination": "vendor\\screencontrol\\models.py",
+    "source_sha256": "b7518520cb569caa58929bd46cc3fbb3748c0be307c695ef81fb5a0875d71368",
+    "copied_sha256": "b7518520cb569caa58929bd46cc3fbb3748c0be307c695ef81fb5a0875d71368",
+    "adapted": false
+  },
+  {
+    "source": "C:\\Users\\Acer\\Desktop\\projects\\LEGACYStudios\\ScreenControlProjects\\Test1\\core\\agent_planner.py",
+    "destination": "vendor\\screencontrol\\local_planner.py",
+    "source_sha256": "97963dee304cdcaf28d39fc0bf00459de21fb08ecf99dd49e56efcef499c4c40",
+    "copied_sha256": "2b3c6494a03aa51a8ec4bc12aa93d1b3a205f6014037cfd8c702281b1a9b4c02",
+    "adapted": true
+  }
+]
